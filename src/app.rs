@@ -1602,6 +1602,11 @@ impl eframe::App for App {
                         });
                 }
             });
+        if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            self.detail_open = false;
+            self.selected_event = None;
+            self.confirm_clear_history = false;
+        }
         // Keep LLDP metadata off the main table. Double-click (or Enter) opens detail.
         if self.detail_open {
             // Track a stable adapter/chassis/port identity rather than a vector index:
@@ -1619,8 +1624,8 @@ impl eframe::App for App {
                     .id(egui::Id::new("neighbor-detail-dialog"))
                     .open(&mut open)
                     .resizable(true)
-                    .default_size([610., 440.])
-                    .min_width(410.)
+                    .default_size([560., 410.])
+                    .min_width(360.)
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical().id_salt("neighbor-detail-scroll")
                             .show(ui, |ui| self.neighbor_details(ui, selected_index));
@@ -1630,6 +1635,66 @@ impl eframe::App for App {
                 self.detail_open = false;
                 self.detail_key = None;
             }
+        }
+        if let Some(event) = self.selected_event.clone() {
+            let mut open = true;
+            egui::Window::new(l.t(
+                "Ereignisdetails", "Event details", "Gebeurtenisdetails"
+            )).id(egui::Id::new("event-detail-window"))
+                .open(&mut open)
+                .resizable(true)
+                .default_size([440., 180.])
+                .show(ctx, |ui| {
+                    egui::Grid::new("event-details-grid")
+                        .num_columns(2).spacing([14., 7.]).show(ui, |ui| {
+                        for (label, value) in [
+                            (l.t("Zeit (UTC)", "Time (UTC)", "Tijd (UTC)"),
+                                event.at.format("%Y-%m-%d %H:%M:%S").to_string()),
+                            (l.t("Adapter", "Adapter", "Adapter"), event.adapter.clone()),
+                            (l.t("Ereignis", "Event", "Gebeurtenis"),
+                                event_name(l, &event.action).into()),
+                        ] {
+                            ui.label(RichText::new(label).small().weak());
+                            ui.add(egui::Label::new(value).selectable(true).wrap());
+                            ui.end_row();
+                        }
+                    });
+                    ui.separator();
+                    ui.add(egui::Label::new(&event.detail).selectable(true).wrap());
+                });
+            if !open { self.selected_event = None; }
+        }
+        if self.confirm_clear_history {
+            let mut open = true;
+            egui::Window::new(l.t(
+                "Protokoll leeren?", "Clear activity log?", "Logboek wissen?"
+            )).id(egui::Id::new("clear-history-confirmation"))
+                .open(&mut open).collapsible(false).resizable(false)
+                .default_width(340.)
+                .show(ctx, |ui| {
+                    ui.label(l.t(
+                        "Alle gespeicherten Ereignisse werden dauerhaft gelöscht.",
+                        "All saved activity events will be permanently deleted.",
+                        "Alle opgeslagen gebeurtenissen worden definitief gewist."
+                    ));
+                    ui.add_space(8.);
+                    ui.horizontal(|ui| {
+                        if ui.button(l.t("Abbrechen", "Cancel", "Annuleren")).clicked() {
+                            self.confirm_clear_history = false;
+                        }
+                        if ui.button(l.t(
+                            "Protokoll löschen", "Delete log", "Logboek verwijderen"
+                        )).clicked() {
+                            self.monitor.events.clear();
+                            let _ = std::fs::remove_file(
+                                settings::data_dir().join("history.json")
+                            );
+                            self.confirm_clear_history = false;
+                            self.save();
+                        }
+                    });
+                });
+            if !open { self.confirm_clear_history = false; }
         }
         if self.last_save.elapsed() > Duration::from_secs(10) {
             self.save();
