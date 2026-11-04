@@ -7,7 +7,8 @@ WinLLDP ist ein nativer Windows-LLDP-Client für Windows 10/11 x64 mit Rust/egui
 - **Treiberfreier LLDP-Live-Empfang** über den in Windows integrierten Packet Monitor (Administratorrechte erforderlich), mit Npcap als optionalem Empfangs-Fallback. Ohne Npcap funktionieren Empfang, PCAP-Offlineanalyse und Diagnose.
 - Sender startet **niemals automatisch**. Bewusste Aktivierung auf einem ausgewählten Adapter, konfigurierbare Pflichtfelder und weitere TLVs.
 - Verlauf der Port-/Nachbarereignisse, CSV-/JSON-/PCAP-Export, Offline-PCAP-Import.
-- **Kompakte GUI** ohne Seitenleiste: Nachbarn, Adapter und Senden im Hauptbereich; Protokoll, Einstellungen und Info im Menü **Mehr**. Einfache Suchleiste, ein Datei-Menü und Tabellen mit Doppelklick-Details.\n- GUI mit Tray, Deutsch/Englisch/Niederländisch, System-/Hell-/Dunkelmodus.
+- **Kompakte GUI** ohne Seitenleiste: Nachbarn, Adapter und Senden im Hauptbereich; Protokoll, Einstellungen und Info im Menü **Mehr**. Einfache Suchleiste, ein Datei-Menü und Tabellen mit Doppelklick-Details.
+- GUI mit Tray, Deutsch/Englisch/Niederländisch, System-/Hell-/Dunkelmodus.
 - CLI als eigenes Konsolenprogramm `winlldp-cli.exe --help` oder über `WinLLDP.exe --cli`.
 
 ## Windows-Download
