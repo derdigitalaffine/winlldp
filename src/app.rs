@@ -461,6 +461,13 @@ impl App {
             .inner_margin(11.)
             .corner_radius(8)
     }
+    fn warning_color(ui: &egui::Ui) -> Color32 {
+        if ui.visuals().dark_mode {
+            Color32::from_rgb(239, 165, 111)
+        } else {
+            Color32::from_rgb(153, 66, 28)
+        }
+    }
     fn title(ui: &mut egui::Ui, title: &str, _description: &str) {
         ui.label(RichText::new(title).size(19.).strong());
         ui.add_space(7.);
@@ -875,14 +882,14 @@ impl App {
                             ).selectable(true).wrap());
                         }
                         Err(problem) => {
-                            ui.colored_label(Color32::from_rgb(204, 129, 69),
+                            ui.colored_label(Self::warning_color(ui),
                                 format!("Windows: {problem}"));
                         }
                     }
                 }
                 self.npcap_setup_ui(ui);
                 for (id, problem) in &self.capture_errors {
-                    ui.colored_label(Color32::from_rgb(204, 129, 69),
+                    ui.colored_label(Self::warning_color(ui),
                         format!("{}: {problem}", self.name(id)));
                 }
                 for (id, detail) in &self.backend_notes {
@@ -934,7 +941,7 @@ impl App {
                                 l.t("Getrennt", "Disconnected", "Verbroken")
                             });
                             if let Some(error) = self.capture_errors.get(&a.id) {
-                                ui.colored_label(Color32::from_rgb(211, 127, 76),
+                                ui.colored_label(Self::warning_color(ui),
                                     l.t("Fehler", "Error", "Fout")).on_hover_text(error);
                             } else if self.ready.contains(&a.id) {
                                 ui.label(self.backend_names.get(&a.id)
@@ -999,7 +1006,7 @@ impl App {
                     l.t("Sender aus", "Advertising off", "Verzenden uit")
                 };
                 ui.label(RichText::new(state).strong().color(if active {
-                    GREEN
+                    ui.visuals().hyperlink_color
                 } else {
                     ui.visuals().text_color()
                 }));
@@ -1177,7 +1184,7 @@ impl App {
                     });
                 }
                 Err(error) => {
-                    ui.colored_label(Color32::from_rgb(211, 127, 76),
+                    ui.colored_label(Self::warning_color(ui),
                         format!("{}: {error}",
                             l.t("Paket ungültig", "Invalid packet", "Ongeldig pakket")));
                 }
@@ -1550,9 +1557,9 @@ impl eframe::App for App {
                     };
                     ui.label(RichText::new(status).small().color(
                         if !self.capture_errors.is_empty() {
-                            Color32::from_rgb(211, 127, 76)
+                            Self::warning_color(ui)
                         } else if !self.ready.is_empty() {
-                            GREEN
+                            ui.visuals().hyperlink_color
                         } else {
                             ui.visuals().weak_text_color()
                         }
@@ -1569,14 +1576,14 @@ impl eframe::App for App {
                         ui.separator();
                         ui.label(RichText::new(l.t(
                             "Sender aktiv", "Advertising", "Verzenden actief"
-                        )).small().color(GREEN));
+                        )).small().color(ui.visuals().hyperlink_color));
                     }
                     if !self.message.is_empty() {
                         let short = self.message.chars().take(86).collect::<String>();
                         ui.separator();
                         ui.label(RichText::new(short).small().color(
                             if self.is_error {
-                                Color32::from_rgb(211, 127, 76)
+                                Self::warning_color(ui)
                             } else {
                                 ui.visuals().weak_text_color()
                             }
