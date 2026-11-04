@@ -719,6 +719,10 @@ impl App {
                         ui.colored_label(Color32::from_rgb(214, 151, 75),
                             l.t("Adminzugriff erforderlich", "Administrator required", "Beheerder vereist"));
                     }
+                    if report.devices.is_empty() {
+                        ui.colored_label(Color32::from_rgb(214, 151, 75),
+                            l.t("Keine Capture-Geräte sichtbar", "No capture devices visible", "Geen captureapparaten zichtbaar"));
+                    }
                 }
             });
             ui.horizontal_wrapped(|ui| {
@@ -735,6 +739,8 @@ impl App {
                         .add_filter("Npcap installer", &["exe"])
                         .pick_file()
                     {
+                        // Release capture handles before a driver install or upgrade.
+                        self.stop();
                         let result = crate::platform::launch_npcap_installer(&path)
                             .map(|_| l.t(
                                 "Npcap-Setup gestartet. Nach Abschluss auf „Erneut prüfen“ klicken; UAC bestätigen.",
