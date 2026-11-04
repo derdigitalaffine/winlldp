@@ -1250,13 +1250,13 @@ impl eframe::App for App {
             }
         }
         egui::TopBottomPanel::top("top")
-            .exact_height(70.)
+            .exact_height(54.)
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.add_space(8.);
-                    ui.add(egui::Image::new((self.logo.id(), Vec2::splat(50.))));
+                    ui.add(egui::Image::new((self.logo.id(), Vec2::splat(34.))));
                     ui.vertical(|ui| {
-                        ui.label(RichText::new("WinLLDP").size(24.).strong());
+                        ui.label(RichText::new("WinLLDP").size(19.).strong());
                         ui.label(
                             RichText::new("NETWORK DISCOVERY")
                                 .size(10.)
@@ -1294,7 +1294,7 @@ impl eframe::App for App {
                 });
             });
         egui::TopBottomPanel::bottom("status")
-            .min_height(30.)
+            .min_height(25.)
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(
@@ -1321,7 +1321,7 @@ impl eframe::App for App {
                 });
             });
         egui::SidePanel::left("navigation")
-            .exact_width(198.)
+            .exact_width(145.)
             .resizable(false)
             .show(ctx, |ui| {
                 ui.add_space(18.);
@@ -1344,8 +1344,8 @@ impl eframe::App for App {
                 {
                     if ui
                         .add_sized(
-                            [ui.available_width(), 39.],
-                            egui::Button::new(format!("{:02}   {label}", i + 1))
+                            [ui.available_width(), 31.],
+                            egui::Button::new(*label)
                                 .selected(self.page == i)
                                 .frame(self.page == i),
                         )
@@ -1364,7 +1364,7 @@ impl eframe::App for App {
                 });
             });
         egui::CentralPanel::default()
-            .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(20.))
+            .frame(egui::Frame::central_panel(&ctx.style()).inner_margin(12.))
             .show(ctx, |ui| {
                 if self.page == 0 {
                     self.overview(ui);
@@ -1380,6 +1380,25 @@ impl eframe::App for App {
                         });
                 }
             });
+        // Keep LLDP metadata off the main table. Double-click (or Enter) opens detail.
+        if self.detail_open {
+            if self.selected >= self.monitor.neighbors.len() {
+                self.detail_open = false;
+            } else {
+                let mut open = self.detail_open;
+                egui::Window::new(l.t("LLDP-Nachbar · Details", "LLDP neighbor · details", "LLDP-buur · details"))
+                    .id(egui::Id::new("neighbor-detail-dialog"))
+                    .open(&mut open)
+                    .resizable(true)
+                    .default_size([610., 440.])
+                    .min_width(410.)
+                    .show(ctx, |ui| {
+                        egui::ScrollArea::vertical().id_salt("neighbor-detail-scroll")
+                            .show(ui, |ui| self.neighbor_details(ui));
+                    });
+                self.detail_open = open;
+            }
+        }
         if self.last_save.elapsed() > Duration::from_secs(10) {
             self.save();
         }
