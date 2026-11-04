@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32, RichText, Vec2};
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     time::{Duration, Instant},
 };
 use winlldp::{
@@ -23,6 +23,10 @@ pub struct App {
     page: usize,
     selected: usize,
     query: String,
+    detail_open: bool,
+    npcap: Result<capture::NpcapReport, String>,
+    capture_errors: BTreeMap<String, String>,
+    own_frames: u64,
     message: String,
     is_error: bool,
     logo: egui::TextureHandle,
@@ -75,6 +79,10 @@ impl App {
             page: 0,
             selected: 0,
             query: String::new(),
+            detail_open: false,
+            npcap: capture::inspect_npcap(),
+            capture_errors: BTreeMap::new(),
+            own_frames: 0,
             message: String::new(),
             is_error: false,
             logo,
@@ -220,6 +228,8 @@ impl App {
     }
     fn start(&mut self) {
         self.ready.clear();
+        self.capture_errors.clear();
+        self.npcap = capture::inspect_npcap();
         self.tx_active.clear();
         self.tx_pending.clear();
         let devices = self
@@ -355,8 +365,10 @@ impl App {
                 Notice::Frame(p) => {
                     let _ = self.monitor.ingest(&p.adapter, p.bytes, p.at);
                 }
+                Notice::LocalFrame(_id) => self.own_frames += 1,
                 Notice::Status(id, s) => {
                     if s == "capture_started" {
+                        self.capture_errors.remove(&id);
                         self.ready.insert(id.clone());
                     } else {
                         self.ready.remove(&id);
@@ -366,6 +378,7 @@ impl App {
                     self.monitor.log(&self.name(&id), &s, String::new());
                 }
                 Notice::Error(id, e) => {
+                    self.capture_errors.insert(id.clone(), e.clone());
                     self.tx_pending.remove(&id);
                     self.monitor.log(&self.name(&id), "error", e.clone());
                     self.notify(Err(format!("{}: {e}", self.name(&id))));
