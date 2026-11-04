@@ -396,7 +396,7 @@ fn run_windows(
     // Never guess a pktmon component from an enumeration index.
     let all = adapters()?;
     let identity = |item: &Adapter| InterfaceIdentity {
-        name: item.id.strip_prefix("\\\\Device\\\\NPF_").unwrap_or(&item.id),
+        name: item.id.strip_prefix("\\Device\\NPF_").unwrap_or(&item.id),
         description: Some(item.description.as_str()),
         mac_address: Some(item.mac),
     };
