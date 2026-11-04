@@ -511,58 +511,30 @@ impl App {
     }
     fn overview(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
-        Self::title(ui,
-            l.t("LLDP-Nachbarn", "LLDP neighbors", "LLDP-buren"),
-            l.t("Kompakte Tabelle · Doppelklick öffnet alle Details.",
-                "Compact table · double-click a row for full details.",
-                "Compacte tabel · dubbelklik voor alle details."));
-        ui.horizontal_wrapped(|ui| {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(l.t(
+                "Nachbarn", "Neighbors", "Buren"
+            )).size(19.).strong());
+            ui.separator();
             ui.label(RichText::new(format!(
-                "{} {} · {} {} · {} {}",
-                self.monitor.neighbors.len(), l.t("Nachbarn", "neighbors", "buren"),
-                self.monitor.received, l.t("Pakete", "packets", "pakketten"),
-                self.own_frames, l.t("lokale Frames ausgeblendet",
-                    "local echoes hidden", "lokale frames verborgen")
+                "{} {}", self.monitor.neighbors.len(),
+                l.t("gefunden", "found", "gevonden"),
             )).small().weak());
-            if !self.capture_errors.is_empty() {
-                ui.colored_label(Color32::from_rgb(216, 139, 67), l.t(
-                    "Empfang prüfen", "Check capture", "Controleer ontvangst"));
-                if ui.small_button(l.t("Diagnose / Installation",
-                    "Diagnostics / install", "Diagnose / installatie")).clicked() {
-                    self.page = 1;
-                }
-            } else if self.ready.is_empty() {
-                ui.label(RichText::new(l.t("Empfang nicht aktiv",
-                    "Capture inactive", "Ontvangst niet actief")).small().weak());
-                if ui.small_button(l.t("Adapter prüfen", "Check adapters", "Adapters controleren")).clicked() {
-                    self.page = 1;
-                }
-            }
         });
-        ui.add_space(8.);
-        ui.horizontal_wrapped(|ui| {
+        ui.add_space(5.);
+        ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut self.query)
-                .hint_text(l.t("Switch / Port / Adapter / MAC suchen …",
-                    "Search switch / port / adapter / MAC …",
-                    "Zoek switch / poort / adapter / MAC …"))
-                .desired_width(250.));
+                .hint_text(l.t("Switch, Port oder Adapter suchen",
+                    "Search switch, port or adapter",
+                    "Zoek switch, poort of adapter"))
+                .desired_width(285.));
             if !self.query.is_empty()
                 && ui.small_button(l.t("Leeren", "Clear", "Wissen")).clicked() {
                 self.query.clear();
             }
-            if ui.small_button(l.t("PCAP öffnen", "Open PCAP", "PCAP openen")).clicked() {
-                self.import();
-            }
-            ui.menu_button(l.t("Export", "Export", "Exporteren"), |ui| {
-                for kind in ["CSV", "JSON", "PCAP"] {
-                    if ui.button(kind).clicked() {
-                        self.export(kind);
-                        ui.close();
-                    }
-                }
-            });
+            self.file_menu(ui);
         });
-        ui.add_space(7.);
+        ui.add_space(4.);
         let query = self.query.trim().to_lowercase();
         let rows: Vec<(usize, String, String, String, String, String)> = self.monitor.neighbors
             .iter().enumerate().filter_map(|(index, neighbor)| {
@@ -576,33 +548,59 @@ impl App {
                 let searchable = format!("{} {} {} {} {} {}",
                     switch, a.port_id, a.port_description, a.chassis_id,
                     a.source_mac, adapter).to_lowercase();
-                if !query.is_empty() && !searchable.contains(&query) { return None; }
+                if !query.is_empty() && !searchable.contains(&query) {
+                    return None;
+                }
                 Some((index, switch, a.port_id.clone(), adapter,
                     format!("{} s", a.ttl),
                     neighbor.last_seen.format("%d.%m. %H:%M:%S").to_string()))
             }).collect();
-        ui.label(RichText::new(format!(
-            "{} {} · {}",
-            rows.len(),
-            l.t("Treffer", "matches", "resultaten"),
-            l.t("Doppelklick: Details", "Double-click: details", "Dubbelklik: details")
-        )).small().weak());
         if rows.is_empty() {
-            ui.add_space(12.);
-            ui.label(l.t("Keine passenden LLDP-Nachbarn. Adapter und Npcap unter „Adapter“ prüfen.",
-                "No matching LLDP neighbors. Check adapters and Npcap in Adapters.",
-                "Geen LLDP-buren gevonden. Controleer adapters en Npcap bij Adapters."));
-            if self.npcap.is_err() && ui.button(l.t("Npcap installieren …",
-                "Install Npcap …", "Npcap installeren …")).clicked() {
-                self.page = 1;
-            }
+            ui.add_space(14.);
+            Self::surface(ui).show(ui, |ui| {
+                ui.add_space(12.);
+                ui.vertical_centered(|ui| {
+                    if self.query.is_empty() {
+                        ui.label(RichText::new(l.t(
+                            "Noch keine LLDP-Nachbarn",
+                            "No LLDP neighbors yet",
+                            "Nog geen LLDP-buren"
+                        )).strong());
+                        ui.label(RichText::new(l.t(
+                            "Aktiven Netzwerkadapter und LLDP am Switch prüfen.",
+                            "Check the active adapter and LLDP on the switch.",
+                            "Controleer de adapter en LLDP op de switch."
+                        )).small().weak());
+                        ui.add_space(5.);
+                        if ui.button(l.t(
+                            "Adapter konfigurieren", "Configure adapters", "Adapters instellen"
+                        )).clicked() {
+                            self.page = 1;
+                        }
+                    } else {
+                        ui.label(l.t(
+                            "Keine Treffer. Suchbegriff ändern oder leeren.",
+                            "No matches. Try another search.",
+                            "Geen resultaten. Probeer een andere zoekterm."
+                        ));
+                    }
+                });
+                ui.add_space(12.);
+            });
             return;
         }
         if !rows.iter().any(|row| row.0 == self.selected) {
             self.selected = rows[0].0;
         }
+        ui.label(RichText::new(format!(
+            "{} {}  ·  {}",
+            rows.len(), l.t("Treffer", "matches", "resultaten"),
+            l.t("Doppelklick für Details", "Double-click for details",
+                "Dubbelklik voor details")
+        )).small().weak());
+        ui.add_space(2.);
         ui.scope(|ui| {
-            ui.spacing_mut().item_spacing = Vec2::new(7., 3.);
+            ui.spacing_mut().item_spacing = Vec2::new(8., 3.);
             ui.spacing_mut().interact_size.y = 23.;
             egui::ScrollArea::both().id_salt("neighbors-table")
                 .auto_shrink([false, false])
@@ -610,16 +608,16 @@ impl App {
                     egui::Grid::new("neighbors-grid")
                         .num_columns(5)
                         .striped(true)
-                        .spacing([13., 3.])
+                        .spacing([15., 4.])
                         .show(ui, |ui| {
-                            for header in [
+                            for heading in [
                                 l.t("Switch", "Switch", "Switch"),
                                 l.t("Port", "Port", "Poort"),
                                 l.t("Adapter", "Adapter", "Adapter"),
                                 "TTL",
-                                l.t("Zuletzt (UTC)", "Last seen (UTC)", "Laatst (UTC)")
+                                l.t("Zuletzt (UTC)", "Last (UTC)", "Laatst (UTC)"),
                             ] {
-                                ui.label(RichText::new(header).small().strong().weak());
+                                ui.label(RichText::new(heading).small().strong().weak());
                             }
                             ui.end_row();
                             for (index, switch, port, adapter, ttl, seen) in &rows {
@@ -631,11 +629,12 @@ impl App {
                                     (ttl.as_str(), ttl.as_str()),
                                     (seen.as_str(), seen.as_str()),
                                 ] {
-                                    let response = ui.selectable_label(selected, value).on_hover_text(hover);
+                                    let response = ui.selectable_label(selected, value)
+                                        .on_hover_text(hover);
                                     if response.clicked() { self.selected = *index; }
-                                    if response.double_clicked()
-                                        || (response.has_focus()
-                                            && ui.input(|input| input.key_pressed(egui::Key::Enter))) {
+                                    if response.double_clicked() ||
+                                        (response.has_focus() &&
+                                         ui.input(|input| input.key_pressed(egui::Key::Enter))) {
                                         self.selected = *index;
                                         let neighbor = &self.monitor.neighbors[*index];
                                         self.detail_key = Some((
@@ -652,7 +651,6 @@ impl App {
                 });
         });
     }
-
     fn neighbor_details(&self, ui: &mut egui::Ui, index: usize) {
         let l = self.settings.language;
                     let n = &self.monitor.neighbors[index];
