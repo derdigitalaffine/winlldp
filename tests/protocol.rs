@@ -103,3 +103,13 @@ fn oversize_and_bad_org_are_rejected() {
     p.optional = vec![(126, "AB ".repeat(512))];
     assert!(encode(&p, [1; 6], false).is_err());
 }
+
+#[test]
+fn capture_rejects_empty_selection_and_inactive_sender() {
+    let mut engine = winlldp::capture::Engine::default();
+    assert!(engine.start(&[]).is_err());
+    assert!(!engine.running());
+    assert!(engine.advertise("missing", Some(profile())).is_err());
+    engine.stop();
+    assert!(engine.poll().is_empty());
+}
