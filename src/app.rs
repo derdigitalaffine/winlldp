@@ -744,6 +744,17 @@ impl App {
                         self.notify(result);
                     }
                 }
+                if !crate::platform::is_admin() &&
+                    ui.button(l.t("Mit Administratorrechten neu starten …",
+                        "Restart as administrator …", "Herstart als beheerder …")).clicked() {
+                    match crate::platform::elevate() {
+                        Ok(()) => {
+                            self.exit = true;
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        },
+                        Err(e) => self.notify(Err(e)),
+                    }
+                }
                 if ui.button(l.t("3. Erneut prüfen", "3. Recheck", "3. Opnieuw controleren")).clicked() {
                     self.npcap = capture::inspect_npcap();
                     match capture::adapters() {
@@ -808,46 +819,45 @@ impl App {
                 self.start();
             }
         });
-        for a in &self.adapters {
-            Self::surface(ui)
-                .inner_margin(14.)
-                .show(ui, |ui| {
-                    let mut chosen = self.chosen.contains(&a.id);
-                    ui.horizontal(|ui| {
-                        if ui
-                            .checkbox(&mut chosen, RichText::new(&a.name).strong().size(18.))
-                            .changed()
-                        {
-                            if chosen {
-                                self.chosen.insert(a.id.clone());
-                            } else {
-                                self.chosen.remove(&a.id);
-                            }
+        ui.add_space(6.);
+        egui::ScrollArea::both().id_salt("adapter-table")
+            .auto_shrink([false, true]).show(ui, |ui| {
+                egui::Grid::new("adapter-grid").striped(true)
+                    .num_columns(5).spacing([14., 7.]).show(ui, |ui| {
+                    for heading in [
+                        l.t("Empfang", "Capture", "Ontvangst"),
+                        l.t("Adapter", "Adapter", "Adapter"),
+                        l.t("Verbindung", "Link", "Verbinding"),
+                        l.t("Status", "Status", "Status"),
+                        "MAC",
+                    ] {
+                        ui.label(RichText::new(heading).small().strong().weak());
+                    }
+                    ui.end_row();
+                    for a in &self.adapters {
+                        let mut checked = self.chosen.contains(&a.id);
+                        if ui.checkbox(&mut checked, "").changed() {
+                            if checked { self.chosen.insert(a.id.clone()); }
+                            else { self.chosen.remove(&a.id); }
                         }
-                        ui.label(if self.ready.contains(&a.id) {
-                            l.t("Empfang aktiv", "Capture active", "Ontvangst actief")
-                        } else if a.up {
-                            l.t("Verbunden", "Connected", "Verbonden")
+                        ui.label(RichText::new(&a.name).strong())
+                            .on_hover_text(format!("{}\n{}\n{}", a.description, a.id, a.ips.join(", ")));
+                        ui.label(if a.up { l.t("Verbunden", "Connected", "Verbonden") }
+                            else { l.t("Getrennt", "Disconnected", "Verbroken") });
+                        if let Some(err) = self.capture_errors.get(&a.id) {
+                            ui.colored_label(Color32::from_rgb(218, 142, 72),
+                                l.t("Fehler", "Error", "Fout")).on_hover_text(err);
                         } else {
-                            l.t("Nicht verbunden", "Disconnected", "Niet verbonden")
-                        });
-                    });
-                    ui.label(&a.description);
-                    ui.monospace(
-                        a.mac
-                            .iter()
-                            .map(|v| format!("{v:02X}"))
-                            .collect::<Vec<_>>()
-                            .join(":"),
-                    );
-                    ui.label(a.ips.join(" · "));
-                    ui.add(
-                        egui::Label::new(RichText::new(&a.id).small().weak())
-                            .selectable(true)
-                            .wrap(),
-                    );
+                            ui.label(if self.ready.contains(&a.id) {
+                                l.t("Empfang läuft", "Listening", "Luistert")
+                            } else { l.t("Bereit", "Idle", "Gereed") });
+                        }
+                        ui.monospace(a.mac.iter().map(|x| format!("{x:02X}"))
+                            .collect::<Vec<_>>().join(":"));
+                        ui.end_row();
+                    }
                 });
-        }
+            });
         if self.adapters.is_empty() {
             ui.label(l.t(
                 "Keine Ethernetadapter gefunden.",
