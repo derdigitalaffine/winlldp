@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 use winlldp::{
-    capture::{self, Adapter, Engine, Notice},
+    capture::{self, Adapter, CaptureBackend, Engine, Notice},
     model::{Event, Monitor},
     protocol::{self, TxProfile},
     settings::{self, Language as L, Settings, Theme},
@@ -27,6 +27,9 @@ pub struct App {
     detail_key: Option<(String, String, String)>,
     npcap: Result<capture::NpcapReport, String>,
     capture_errors: BTreeMap<String, String>,
+    backend_names: BTreeMap<String, String>,
+    backend_notes: BTreeMap<String, String>,
+    native_report: Option<Result<String, String>>,
     own_frames: u64,
     message: String,
     is_error: bool,
@@ -84,6 +87,9 @@ impl App {
             detail_key: None,
             npcap: capture::inspect_npcap(),
             capture_errors: BTreeMap::new(),
+            backend_names: BTreeMap::new(),
+            backend_notes: BTreeMap::new(),
+            native_report: None,
             own_frames: 0,
             message: String::new(),
             is_error: false,
@@ -231,6 +237,8 @@ impl App {
     fn start(&mut self) {
         self.ready.clear();
         self.capture_errors.clear();
+        self.backend_names.clear();
+        self.backend_notes.clear();
         self.npcap = capture::inspect_npcap();
         self.tx_active.clear();
         self.tx_pending.clear();
@@ -240,7 +248,7 @@ impl App {
             .filter(|a| self.chosen.contains(&a.id))
             .cloned()
             .collect::<Vec<_>>();
-        let r = self.engine.start(&devices).map(|_| {
+        let r = self.engine.start_with(&devices, self.settings.capture_backend).map(|_| {
             self.settings
                 .language
                 .t(
@@ -368,6 +376,14 @@ impl App {
                     let _ = self.monitor.ingest(&p.adapter, p.bytes, p.at);
                 }
                 Notice::LocalFrame(_id) => self.own_frames += 1,
+                Notice::Backend(id, backend) => {
+                    self.backend_names.insert(id.clone(), backend);
+                    self.monitor.log(&self.name(&id), "backend_selected", String::new());
+                }
+                Notice::Diagnostic(id, detail) => {
+                    self.backend_notes.insert(id.clone(), detail.clone());
+                    self.monitor.log(&self.name(&id), "capture_diagnostic", detail);
+                },
                 Notice::Status(id, s) => {
                     if s == "capture_started" {
                         self.capture_errors.remove(&id);
@@ -456,7 +472,7 @@ impl App {
                 self.own_frames, l.t("lokale Frames ausgeblendet",
                     "local echoes hidden", "lokale frames verborgen")
             )).small().weak());
-            if self.npcap.is_err() || !self.capture_errors.is_empty() {
+            if !self.capture_errors.is_empty() {
                 ui.colored_label(Color32::from_rgb(216, 139, 67), l.t(
                     "Npcap/Empfang prüfen", "Check Npcap/capture", "Controleer Npcap/ontvangst"));
                 if ui.small_button(l.t("Diagnose / Installation",
