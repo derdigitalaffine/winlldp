@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$version = "1.0.1"
+$version = "1.0.2"
 $target = "x86_64-pc-windows-msvc"
 $releaseDir = Join-Path "target" "$target/release"
 $buildDir = "build"
