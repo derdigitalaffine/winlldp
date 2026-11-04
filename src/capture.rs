@@ -56,6 +56,7 @@ pub enum Notice {
     Status(String, String),
     Error(String, String),
     Tx(String, bool),
+    LocalFrame(String),
 }
 #[derive(Clone)]
 enum Command {
@@ -133,6 +134,49 @@ impl Drop for Engine {
         self.stop();
     }
 }
+
+/// Inspect the actual Npcap DLL, device enumeration and admin-only setting.
+/// Never assumes that DLL presence alone means capture is working.
+pub fn inspect_npcap() -> Result<NpcapReport, String> {
+    let api = Api::load()?;
+    let devices = unsafe { api.devices()? };
+    let version = unsafe {
+        let p = (api.version)();
+        if p.is_null() { "Npcap (unknown version)".into() }
+        else { CStr::from_ptr(p).to_string_lossy().into_owned() }
+    };
+    #[cfg(windows)]
+    let admin_only = {
+        use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
+        RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(r"SYSTEM\CurrentControlSet\Services\npcap\Parameters")
+            .ok()
+            .and_then(|key| key.get_value::<u32, _>("AdminOnly").ok())
+            .map(|value| value != 0)
+    };
+    #[cfg(not(windows))]
+    let admin_only = None;
+    Ok(NpcapReport { version, devices, admin_only })
+}
+
+pub fn is_local_source(frame: &[u8], mac: [u8; 6]) -> bool {
+    mac != [0; 6] && frame.get(6..12) == Some(mac.as_slice())
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NpcapReport {
+    pub version: String,
+    pub devices: Vec<String>,
+    pub admin_only: Option<bool>,
+}
+#[repr(C)]
+struct PcapIf {
+    next: *mut PcapIf,
+    name: *mut c_char,
+    _description: *mut c_char,
+    _addresses: *mut c_void,
+    _flags: u32,
+}
 #[repr(C)]
 struct Header {
     sec: i32,
@@ -158,6 +202,10 @@ struct Api {
     filter: unsafe extern "C" fn(Handle, *mut Bpf) -> c_int,
     free: unsafe extern "C" fn(*mut Bpf),
     datalink: unsafe extern "C" fn(Handle) -> c_int,
+    version: unsafe extern "C" fn() -> *const c_char,
+    findalldevs: unsafe extern "C" fn(*mut *mut PcapIf, *mut c_char) -> c_int,
+    freealldevs: unsafe extern "C" fn(*mut PcapIf),
+    direction: Option<unsafe extern "C" fn(Handle, c_int) -> c_int>,
 }
 impl Api {
     fn load() -> Result<Self, String> {
@@ -202,9 +250,36 @@ impl Api {
                 filter: symbol!("pcap_setfilter"),
                 free: symbol!("pcap_freecode"),
                 datalink: symbol!("pcap_datalink"),
+                version: symbol!("pcap_lib_version"),
+                findalldevs: symbol!("pcap_findalldevs"),
+                freealldevs: symbol!("pcap_freealldevs"),
+                direction: l.get(b"pcap_setdirection\0").ok().map(
+                    |f: libloading::Symbol<unsafe extern "C" fn(Handle, c_int) -> c_int>| *f
+                ),
                 _library: l,
             })
         }
+    }
+    unsafe fn devices(&self) -> Result<Vec<String>, String> {
+        let mut head: *mut PcapIf = std::ptr::null_mut();
+        let mut err = [0i8; 256];
+        if (self.findalldevs)(&mut head, err.as_mut_ptr()) != 0 {
+            return Err(format!("Npcap adapter enumeration: {}",
+                CStr::from_ptr(err.as_ptr()).to_string_lossy()));
+        }
+        let mut result = Vec::new();
+        let mut current = head;
+        while !current.is_null() && result.len() < 1024 {
+            let device = &*current;
+            if !device.name.is_null() {
+                result.push(CStr::from_ptr(device.name).to_string_lossy().into_owned());
+            }
+            current = device.next;
+        }
+        if !head.is_null() {
+            (self.freealldevs)(head);
+        }
+        Ok(result)
     }
     unsafe fn err(&self, h: Handle) -> String {
         let p = (self.error)(h);
@@ -253,6 +328,10 @@ fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>)
                 ),
             );
             return;
+        }
+        // PCAP_D_IN=1. If unsupported, local-MAC filtering still protects the UI.
+        if let Some(set_direction) = api.direction {
+            let _ = set_direction(h, 1);
         }
         if (api.nonblock)(h, 1, err.as_mut_ptr()) != 0 {
             notice(&tx, Notice::Error(a.id.clone(), api.err(h)));
@@ -334,6 +413,10 @@ fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>)
                             let bytes =
                                 std::slice::from_raw_parts(bytes, head.caplen as usize).to_vec();
                             if protocol::parse(&bytes).is_ok() {
+                                if is_local_source(&bytes, a.mac) {
+                                    notice(&tx, Notice::LocalFrame(a.id.clone()));
+                                    continue;
+                                }
                                 notice(
                                     &tx,
                                     Notice::Frame(Packet {
@@ -361,5 +444,21 @@ fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>)
         }
         notice(&tx, Notice::Tx(a.id.clone(), false));
         notice(&tx, Notice::Status(a.id, "capture_stopped".into()));
+    }
+}
+
+#[cfg(test)]
+mod own_frame_tests {
+    use super::*;
+    #[test]
+    fn never_treats_remote_or_truncated_frames_as_local() {
+        let mac = [0, 17, 34, 51, 68, 85];
+        let mut frame = vec![0u8; 60];
+        frame[6..12].copy_from_slice(&mac);
+        assert!(is_local_source(&frame, mac));
+        frame[6] = 7;
+        assert!(!is_local_source(&frame, mac));
+        assert!(!is_local_source(&frame[..10], mac));
+        assert!(!is_local_source(&frame, [0; 6]));
     }
 }

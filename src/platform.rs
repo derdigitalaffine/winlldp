@@ -162,3 +162,41 @@ pub fn standard_access() -> Result<(), String> {
         Err("Available on Windows".into())
     }
 }
+
+pub fn launch_npcap_installer(path: &std::path::Path) -> Result<(), String> {
+    // The user obtains this installer directly from npcap.com and selects it.
+    // Windows UAC and the vendor's interactive setup remain visible.
+    let filename = path.file_name().and_then(|s| s.to_str()).ok_or("Invalid filename")?;
+    let name = filename.to_ascii_lowercase();
+    if !name.starts_with("npcap-") || !name.ends_with(".exe") || !path.is_file() {
+        return Err("Select an official npcap-*.exe installer downloaded from npcap.com".into());
+    }
+    #[cfg(windows)]
+    unsafe {
+        use std::os::windows::ffi::OsStrExt;
+        if !path.is_absolute() {
+            return Err("An absolute path to the downloaded Npcap setup is required".into());
+        }
+        // File dialogs already return an absolute path. Avoid a \\?\ prefix,
+        // which Windows ShellExecute may reject even though File APIs support it.
+        let exe: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+        let result = windows_sys::Win32::UI::Shell::ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            exe.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        );
+        if result as isize <= 32 {
+            Err(format!("Npcap installer launch cancelled/failed (code {})", result as isize))
+        } else {
+            Ok(())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Npcap installation is only available on Windows".into())
+    }
+}
