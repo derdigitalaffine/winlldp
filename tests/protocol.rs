@@ -113,3 +113,20 @@ fn capture_rejects_empty_selection_and_inactive_sender() {
     engine.stop();
     assert!(engine.poll().is_empty());
 }
+
+#[test]
+fn settings_roundtrip_and_no_persisted_send_switch() {
+    use winlldp::settings::*;
+    let mut s = Settings::default();
+    assert!(s.close_to_tray);
+    s.language = Language::Nederlands;
+    s.theme = Theme::Dark;
+    s.profiles.insert("Ethernet".into(), profile());
+    let text = serde_json::to_string(&s).unwrap();
+    let loaded: Settings = serde_json::from_str(&text).unwrap();
+    assert_eq!(loaded.language, Language::Nederlands);
+    assert_eq!(loaded.theme, Theme::Dark);
+    assert!(!text.contains("tx_active"));
+    assert!(!text.contains("sending_enabled"));
+    assert_eq!(Settings::default().language.t("ja", "yes", "ja"), "ja");
+}
