@@ -975,17 +975,26 @@ impl App {
         }
         ui.add_enabled_ui(!active&&!pending,|ui|{
    egui::Grid::new("tx-fields").num_columns(2).spacing([16.,10.]).show(ui,|ui|{
-    for(label,value)in [(l.t("Gerätename","System name","Systeemnaam"),&mut self.profile.system_name),(l.t("Beschreibung","Description","Beschrijving"),&mut self.profile.description),(l.t("Portbeschreibung","Port description","Poortbeschrijving"),&mut self.profile.port_description)]{ui.label(label);ui.add(egui::TextEdit::singleline(value).desired_width(360.));ui.end_row();}
+    for(label,value)in [(l.t("Gerätename","System name","Systeemnaam"),&mut self.profile.system_name),(l.t("Beschreibung","Description","Beschrijving"),&mut self.profile.description),(l.t("Portbeschreibung","Port description","Poortbeschrijving"),&mut self.profile.port_description)]{ui.label(label);ui.add(egui::TextEdit::singleline(value).desired_width(290.));ui.end_row();}
     ui.label("Chassis ID");ui.horizontal(|ui|{ui.add(egui::DragValue::new(&mut self.profile.chassis_subtype).range(1..=7));ui.text_edit_singleline(&mut self.profile.chassis_value);});ui.end_row();
     ui.label("Port ID");ui.horizontal(|ui|{ui.add(egui::DragValue::new(&mut self.profile.port_subtype).range(1..=7));ui.text_edit_singleline(&mut self.profile.port_value);});ui.end_row();
     ui.label("TTL / s");ui.add(egui::DragValue::new(&mut self.profile.ttl).range(1..=65535));ui.end_row();ui.label(l.t("Intervall / s","Interval / s","Interval / s"));ui.add(egui::DragValue::new(&mut self.profile.interval).range(1..=3600));ui.end_row();
     ui.label(l.t("Zieladresse","Destination","Bestemming"));egui::ComboBox::from_id_salt("scope").selected_text(&self.profile.destination).show_ui(ui,|ui|{for v in ["01:80:C2:00:00:0E","01:80:C2:00:00:03","01:80:C2:00:00:00"]{ui.selectable_value(&mut self.profile.destination,v.into(),v);}});ui.end_row();
    });
    ui.label(RichText::new(l.t("ID-Subtypen: Chassis MAC=4, IP=5, lokal=7; Port MAC=3, IP=4, Schnittstellenname=5, lokal=7.","ID subtypes: chassis MAC=4, IP=5, local=7; port MAC=3, IP=4, interface name=5, local=7.","ID-subtypen: chassis MAC=4, IP=5, lokaal=7; poort MAC=3, IP=4, interfacenaam=5, lokaal=7.")).small().weak());
-   ui.separator();ui.strong(l.t("Erweiterungen · vollständiger TLV-Editor","Extensions · complete TLV editor","Uitbreidingen · volledige TLV-editor"));ui.label(l.t("Typ 7–127. Für Typ 127: OUI (3 Bytes), Subtyp, Daten. Alle Werte als Hexbytes.","Type 7–127. For type 127: OUI (3 bytes), subtype, data. All values as hex bytes.","Type 7–127. Voor type 127: OUI (3 bytes), subtype, gegevens. Alle waarden als hexbytes."));
-   let mut remove=None;for(i,(kind,hex))in self.profile.optional.iter_mut().enumerate(){ui.horizontal(|ui|{ui.add(egui::DragValue::new(kind).range(7..=127));ui.add(egui::TextEdit::singleline(hex).font(egui::TextStyle::Monospace).desired_width(380.));if ui.button("×").clicked(){remove=Some(i);}});}if let Some(i)=remove{self.profile.optional.remove(i);}
+   ui.add_space(6.);
+    egui::CollapsingHeader::new(l.t(
+        "Erweiterte TLVs (optional)", "Advanced TLVs (optional)", "Geavanceerde TLV's (optioneel)"
+    )).default_open(false).show(ui, |ui| {
+        ui.label(l.t(
+            "Typ 7–127. Für Typ 127: OUI (3 Bytes), Subtyp, Daten. Alle Werte als Hexbytes.",
+            "Type 7–127. For type 127: OUI (3 bytes), subtype, data. All values as hex bytes.",
+            "Type 7–127. Voor type 127: OUI (3 bytes), subtype, gegevens. Alle waarden als hexbytes."
+        ));
+   let mut remove=None;for(i,(kind,hex))in self.profile.optional.iter_mut().enumerate(){ui.horizontal(|ui|{ui.add(egui::DragValue::new(kind).range(7..=127));ui.add(egui::TextEdit::singleline(hex).font(egui::TextStyle::Monospace).desired_width(290.));if ui.button("×").clicked(){remove=Some(i);}});}if let Some(i)=remove{self.profile.optional.remove(i);}
    ui.horizontal(|ui|{ui.add(egui::DragValue::new(&mut self.extra_kind).range(7..=127));ui.add(egui::TextEdit::singleline(&mut self.extra_hex).hint_text("00 80 C2 01 00 2A").desired_width(300.));if ui.button(l.t("Hinzufügen","Add TLV","TLV toevoegen")).clicked(){self.profile.optional.push((self.extra_kind,self.extra_hex.clone()));self.extra_hex.clear();}});
    ui.menu_button(l.t("Vorlage hinzufügen","Add template","Sjabloon toevoegen"),|ui|{for(label,k,v)in [("System capabilities",7,"00 80 00 80"),("IEEE 802.1 PVID (42)",127,"00 80 C2 01 00 2A"),("IEEE 802.3 maximum frame size (1518)",127,"00 12 0F 04 05 EE"),("LLDP-MED capabilities / endpoint class I",127,"00 12 BB 01 00 01 01"),("LLDP-MED inventory / model",127,"00 12 BB 0A 57 69 6E 4C 4C 44 50")]{if ui.button(label).clicked(){self.profile.optional.push((k,v.into()));ui.close();}}});
+    });
   });
         match protocol::encode(&self.profile, a.mac, false) {
             Ok(frame) => {
