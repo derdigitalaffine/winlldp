@@ -15,14 +15,23 @@ Stand: 04.11.2026. Anforderungsinterview läuft.
 - Sendebetrieb innerhalb der Anwendung ohne Windows-Dienst.
 - Fertig kompilierte portable EXE und Installationspaket sollen im Repository als Build liegen.
 
+## Oberfläche und Bedienung
+- Hauptansicht: Switch und Port prominent, Adapter-/Nachbarliste sowie Detailbereich für sämtliche LLDP-Felder.
+- Verhalten beim Schließen in den Einstellungen wählbar; standardmäßig in den Infobereich (Tray) minimieren.
+- Änderungsprotokoll für Portwechsel, neue Nachbarn und Verbindungsverlust sowie Datenexport.
+- Eigener Programmbereich für den standardmäßig ausgeschalteten LLDP-Sendebetrieb.
+- Über-Seite mit „Entwickelt von Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg“ und Hinweis auf die MIT-Lizenz.
+- Eigenes Appsymbol: Nachrichtendienst-Otter, der an einem RJ45-Port lauscht. Das Motiv auch klein in die Oberfläche integrieren.
+- MIT-Lizenz für den eigenen Projektcode; Hinweise und Lizenzen eingebundener Fremdkomponenten separat erhalten.
+
 ## Noch offen
 - CPU-Architekturen.
 - Technischer Umfang und Voraussetzungen des Betriebs ohne Administratorrechte sowie des Betriebs mit Administratorrechten/Npcap.
 - Empfang/Senden je Adapter, automatische Adapterauswahl und mehrere Adapter gleichzeitig.
 - Detaillierte Darstellung aller LLDP-Daten einschließlich LLDP-MED und herstellerspezifischer Erweiterungen; zusätzliches CDP ist noch unbestätigt.
 - Konkrete TLV-Funktionsmatrix für eigene LLDP-Ankündigungen; Profile und weitere Komfortfunktionen noch offen.
-- Live-Aktualisierung, Historie, Export und Diagnose.
-- Oberfläche, Sprache, Hintergrund-/Tray-Verhalten.
+- Details zu Live-Aktualisierung, Aufbewahrung des Änderungsprotokolls, Exportformaten und Diagnose.
+- UI-Details, Sprache und Verhalten eines aktiven Sendebetriebs im Tray bzw. nach einem Neustart.
 - Installerumfang und optionaler Autostart.
 - Signatur und konkrete Windows-Abnahme.
 
