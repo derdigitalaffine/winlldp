@@ -82,7 +82,8 @@ $rustVersion = (& rustc --version).Trim()
     "Smoke: WinLLDP.exe --self-test --report FILE, winlldp-cli.exe --help and --doctor (passed)"
     "Installer: Inno Setup 6, per-user installation, includes uninstall entry"
     "Release binaries: unsigned; verify SHA256SUMS.txt before use"
-    "Receive: Windows Packet Monitor built into Windows (administrator), or optional Npcap capture"\n    "Advertise: external Npcap driver required; not bundled"
+    "Receive: Windows Packet Monitor built into Windows (administrator), or optional Npcap capture"
+    "Advertise: external Npcap driver required; not bundled"
     "Hardware/network capture and installation/uninstallation on actual user PCs: not validated in CI"
 ) | Set-Content -LiteralPath "$buildDir/BUILD_INFO.txt" -Encoding utf8
 
