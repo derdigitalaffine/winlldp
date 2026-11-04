@@ -30,7 +30,9 @@ Diese Verantwortlichkeiten sind keine Behauptung, dass mehrere Agenten gestartet
 - LLDP-Empfang mit Anzeige des angeschlossenen Switches und Ports.
 - Optionaler LLDP-Sendebetrieb in der Anwendung; kein dafür laufender Windows-Dienst.
 - Portable EXE und Installationspaket als vereinbarte Lieferformate.
-- Sprache, Framework, Windows-Versionen, CPU-Architekturen und Capture-/Treiberstrategie sind noch zu klären.
+- Windows 10 und Windows 11 unterstützen; CPU-Architekturen noch klären.
+- Betrieb ohne Administratorrechte sowie mit Administratorrechten/Npcap komfortabel über die UI umschaltbar machen. Fähigkeiten und Voraussetzungen beider Modi technisch nachweisen und transparent darstellen.
+- Sprache, Framework und konkrete Capture-/Treiberstrategie sind noch zu klären.
 - Keine Architektur oder Treiberfreiheit aus dem Namen „portable“ ableiten.
 - Netzwerkwerbung nur bewusst aktivieren; Zustand und betroffene Adapter sichtbar anzeigen.
 
@@ -44,7 +46,8 @@ Diese Verantwortlichkeiten sind keine Behauptung, dass mehrere Agenten gestartet
 - Sendebetrieb beim Beenden der Anwendung sauber beenden.
 
 ## Design
-- Klar lesbare Adapter-, Nachbar-, Switch- und Portinformationen.
+- Höchste Priorität für eine hochwertige, komfortable UI.
+- Klar lesbare Adapter-, Nachbar-, Switch- und Portinformationen; alle empfangenen LLDP-Daten müssen zugänglich sein, einschließlich nicht interpretierter Erweiterungen.
 - Lade-, Empfangs-, Sende-, Leer- und Fehlerzustände verständlich unterscheiden.
 - Wichtige Informationen nicht ausschließlich durch Farbe vermitteln.
 - Weitere visuelle Entscheidungen im Interview klären.
