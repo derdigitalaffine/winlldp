@@ -30,6 +30,19 @@ try {
     Remove-Item -LiteralPath $smokeReport -Force -ErrorAction SilentlyContinue
 }
 
+# Verify the diagnostic CLI always returns actionable JSON even without Npcap on CI.
+$doctorReport = Join-Path $env:TEMP "winlldp-doctor-$PID.json"
+try {
+    & $cli --doctor --output $doctorReport
+    if ($LASTEXITCODE -ne 0) { throw "CLI --doctor returned $LASTEXITCODE" }
+    $doctor = Get-Content -LiteralPath $doctorReport -Raw | ConvertFrom-Json
+    if ($null -eq $doctor.npcap -or $null -eq $doctor.adapters) {
+        throw "CLI --doctor did not produce the required Npcap and adapter fields"
+    }
+} finally {
+    Remove-Item -LiteralPath $doctorReport -Force -ErrorAction SilentlyContinue
+}
+
 # The CLI must be a real runnable console binary.
 & $cli --help
 if ($LASTEXITCODE -ne 0) { throw "CLI --help returned $LASTEXITCODE" }
@@ -66,7 +79,7 @@ $rustVersion = (& rustc --version).Trim()
     "Rust target: $target"
     "Build: cargo build --locked --release --target $target --bins"
     "Tests: cargo test --locked --target $target"
-    "Smoke: WinLLDP.exe --self-test --report FILE, and winlldp-cli.exe --help (passed)"
+    "Smoke: WinLLDP.exe --self-test --report FILE, winlldp-cli.exe --help and --doctor (passed)"
     "Installer: Inno Setup 6, per-user installation, includes uninstall entry"
     "Release binaries: unsigned; verify SHA256SUMS.txt before use"
     "Npcap: external optional driver, NOT bundled; required for live LLDP access"
