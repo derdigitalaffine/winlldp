@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          cargo metadata --format-version 1 --target x86_64-pc-windows-msvc *> $null
+          cargo metadata --format-version 1 --filter-platform x86_64-pc-windows-msvc *> $null
           if ($LASTEXITCODE -ne 0) { throw 'Cargo dependency resolution failed' }
           git add Cargo.lock
           git diff --cached --quiet
