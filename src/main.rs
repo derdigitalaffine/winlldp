@@ -32,12 +32,12 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size(if args.iter().any(|s| s == "--compact") {
-                [860., 580.]
+                [810., 520.]
             } else {
-                [980., 640.]
+                [860., 550.]
             })
-            .with_min_inner_size([740., 480.])
-            .with_title("WinLLDP — Network discovery")
+            .with_min_inner_size([680., 430.])
+            .with_title("WinLLDP")
             .with_icon(eframe::egui::IconData {
                 rgba: im.into_raw(),
                 width: w,

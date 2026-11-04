@@ -12,7 +12,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-const HELP: &str = r#"WinLLDP 1.1.0 — command line
+const HELP: &str = r#"WinLLDP 1.2.0 — command line
 
 WinLLDP.exe --cli [options]
   --help                    Show this help
