@@ -24,6 +24,8 @@ pub struct App {
     selected: usize,
     query: String,
     detail_open: bool,
+    selection_dirty: bool,
+    confirm_clear_history: bool,
     detail_key: Option<(String, String, String)>,
     npcap: Result<capture::NpcapReport, String>,
     capture_errors: BTreeMap<String, String>,
@@ -84,6 +86,8 @@ impl App {
             selected: 0,
             query: String::new(),
             detail_open: false,
+            selection_dirty: false,
+            confirm_clear_history: false,
             detail_key: None,
             npcap: capture::inspect_npcap(),
             capture_errors: BTreeMap::new(),
@@ -217,9 +221,14 @@ impl App {
             } else {
                 Color32::WHITE
             };
-            s.spacing.item_spacing = Vec2::new(9., 9.);
-            s.spacing.button_padding = Vec2::new(13., 8.);
-            s.spacing.interact_size.y = 30.;
+            // One dense design language for table, toolbar and controls.
+            s.spacing.item_spacing = Vec2::new(7., 6.);
+            s.spacing.button_padding = Vec2::new(10., 5.);
+            s.spacing.interact_size.y = 27.;
+            s.visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::same(7);
+            s.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(7);
+            s.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(7);
+            s.visuals.widgets.active.corner_radius = egui::CornerRadius::same(7);
             s.visuals.selection.bg_fill = GREEN.gamma_multiply(0.5);
             s.visuals.hyperlink_color = if dark {
                 GREEN
@@ -227,11 +236,11 @@ impl App {
                 Color32::from_rgb(0, 107, 83)
             };
             s.text_styles
-                .insert(egui::TextStyle::Heading, egui::FontId::proportional(25.));
+                .insert(egui::TextStyle::Heading, egui::FontId::proportional(19.));
             s.text_styles
-                .insert(egui::TextStyle::Body, egui::FontId::proportional(15.));
+                .insert(egui::TextStyle::Body, egui::FontId::proportional(14.));
             s.text_styles
-                .insert(egui::TextStyle::Button, egui::FontId::proportional(15.));
+                .insert(egui::TextStyle::Button, egui::FontId::proportional(13.));
         });
     }
     fn start(&mut self) {
@@ -429,33 +438,76 @@ impl App {
         self.monitor.expire(chrono::Utc::now());
         self.monitor.neighbors.extend(offline);
     }
-    // A shared surface keeps cards and settings consistent in light/dark themes.
+    // Shared border, padding and type scale across all secondary surfaces.
     fn surface(ui: &egui::Ui) -> egui::Frame {
         let (fill, border) = if ui.visuals().dark_mode {
-            (Color32::from_rgb(24, 36, 49), Color32::from_rgb(48, 66, 80))
+            (Color32::from_rgb(24, 36, 49), Color32::from_rgb(43, 62, 77))
         } else {
-            (Color32::WHITE, Color32::from_rgb(218, 228, 236))
+            (Color32::WHITE, Color32::from_rgb(220, 229, 235))
         };
         egui::Frame::new()
             .fill(fill)
             .stroke(egui::Stroke::new(1., border))
-            .inner_margin(16.)
-            .corner_radius(12)
+            .inner_margin(11.)
+            .corner_radius(8)
     }
-    fn title(ui: &mut egui::Ui, title: &str, description: &str) {
-        ui.label(RichText::new(title).size(21.).strong());
-        ui.add_space(2.);
-        ui.label(RichText::new(description).size(14.).weak());
-        ui.add_space(10.);
+    fn title(ui: &mut egui::Ui, title: &str, _description: &str) {
+        ui.label(RichText::new(title).size(19.).strong());
+        ui.add_space(7.);
     }
-    fn card(ui: &mut egui::Ui, label: &str, value: &str) {
-        Self::surface(ui)
-            .inner_margin(16.)
-            .show(ui, |ui| {
-                ui.set_min_height(66.);
-                ui.label(RichText::new(label).size(12.).strong().weak());
-                ui.label(RichText::new(value).size(27.).strong());
-            });
+    fn refresh_adapters(&mut self) {
+        let was_running = self.engine.running();
+        if let Some(a) = self.adapters.get(self.send_index) {
+            self.settings.profiles.insert(a.id.clone(), self.profile.clone());
+        }
+        let old_id = self.adapters.get(self.send_index).map(|a| a.id.clone());
+        match capture::adapters() {
+            Ok(adapters) => {
+                self.stop();
+                self.adapters = adapters;
+                self.chosen.retain(|id| self.adapters.iter().any(|a| &a.id == id));
+                self.send_index = old_id
+                    .and_then(|id| self.adapters.iter().position(|a| a.id == id))
+                    .unwrap_or(0);
+                self.load_profile();
+                self.npcap = capture::inspect_npcap();
+                self.native_report = None;
+                self.selection_dirty = false;
+                if was_running && !self.chosen.is_empty() {
+                    self.start();
+                }
+            }
+            Err(error) => self.notify(Err(error)),
+        }
+    }
+    fn restart_elevated(&mut self, ctx: &egui::Context) {
+        match crate::platform::elevate() {
+            Ok(()) => {
+                self.exit = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            Err(error) => self.notify(Err(error)),
+        }
+    }
+    fn file_menu(&mut self, ui: &mut egui::Ui) {
+        let l = self.settings.language;
+        ui.menu_button(l.t("Datei", "File", "Bestand"), |ui| {
+            if ui.button(l.t("PCAP öffnen …", "Open PCAP …", "PCAP openen …")).clicked() {
+                self.import();
+                ui.close();
+            }
+            ui.separator();
+            for (kind, label) in [
+                ("CSV", l.t("CSV exportieren", "Export CSV", "CSV exporteren")),
+                ("JSON", l.t("JSON exportieren", "Export JSON", "JSON exporteren")),
+                ("PCAP", l.t("PCAP exportieren", "Export PCAP", "PCAP exporteren")),
+            ] {
+                if ui.button(label).clicked() {
+                    self.export(kind);
+                    ui.close();
+                }
+            }
+        });
     }
     fn overview(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
