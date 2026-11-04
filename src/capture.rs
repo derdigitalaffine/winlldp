@@ -138,6 +138,20 @@ pub fn is_local_source(frame: &[u8], mac: [u8; 6]) -> bool {
     mac != [0; 6] && frame.get(6..12) == Some(mac.as_slice())
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct NpcapReport {
+    pub version: String,
+    pub devices: Vec<String>,
+    pub admin_only: Option<bool>,
+}
+#[repr(C)]
+struct PcapIf {
+    next: *mut PcapIf,
+    name: *mut c_char,
+    _description: *mut c_char,
+    _addresses: *mut c_void,
+    _flags: u32,
+}
 #[repr(C)]
 struct Header {
     sec: i32,
@@ -163,6 +177,10 @@ struct Api {
     filter: unsafe extern "C" fn(Handle, *mut Bpf) -> c_int,
     free: unsafe extern "C" fn(*mut Bpf),
     datalink: unsafe extern "C" fn(Handle) -> c_int,
+    version: unsafe extern "C" fn() -> *const c_char,
+    findalldevs: unsafe extern "C" fn(*mut *mut PcapIf, *mut c_char) -> c_int,
+    freealldevs: unsafe extern "C" fn(*mut PcapIf),
+    direction: Option<unsafe extern "C" fn(Handle, c_int) -> c_int>,
 }
 impl Api {
     fn load() -> Result<Self, String> {
@@ -207,6 +225,12 @@ impl Api {
                 filter: symbol!("pcap_setfilter"),
                 free: symbol!("pcap_freecode"),
                 datalink: symbol!("pcap_datalink"),
+                version: symbol!("pcap_lib_version"),
+                findalldevs: symbol!("pcap_findalldevs"),
+                freealldevs: symbol!("pcap_freealldevs"),
+                direction: l.get(b"pcap_setdirection\0").ok().map(
+                    |f: libloading::Symbol<unsafe extern "C" fn(Handle, c_int) -> c_int>| *f
+                ),
                 _library: l,
             })
         }
@@ -258,6 +282,10 @@ fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>)
                 ),
             );
             return;
+        }
+        // PCAP_D_IN=1. If unsupported, local-MAC filtering still protects the UI.
+        if let Some(set_direction) = api.direction {
+            let _ = set_direction(h, 1);
         }
         if (api.nonblock)(h, 1, err.as_mut_ptr()) != 0 {
             notice(&tx, Notice::Error(a.id.clone(), api.err(h)));
