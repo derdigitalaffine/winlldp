@@ -774,6 +774,76 @@ impl App {
 
             });
     }
+    /// Drive the Npcap installation flow from the application, without
+    /// redistributing a third-party installer or silently bypassing Windows UAC.
+    fn npcap_setup_ui(&mut self, ui: &mut egui::Ui) {
+        let l = self.settings.language;
+        Self::surface(ui).inner_margin(12.).show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let status = match &self.npcap {
+                    Ok(report) => format!("Npcap: {} · {} {}",
+                        report.version, report.devices.len(),
+                        l.t("Geräte", "devices", "apparaten")),
+                    Err(problem) => format!("Npcap: {}", problem),
+                };
+                ui.label(RichText::new(status).small());
+                if let Ok(report) = &self.npcap {
+                    if report.admin_only == Some(true) {
+                        ui.colored_label(Color32::from_rgb(214, 151, 75),
+                            l.t("Adminzugriff erforderlich", "Administrator required", "Beheerder vereist"));
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.hyperlink_to(
+                    l.t("1. Npcap offiziell herunterladen", "1. Download official Npcap", "1. Npcap officieel downloaden"),
+                    "https://npcap.com/#download",
+                );
+                if ui.button(l.t(
+                    "2. Installer auswählen und starten …",
+                    "2. Select and run downloaded installer …",
+                    "2. Gedownloade installer kiezen en starten …",
+                )).clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("Npcap installer", &["exe"])
+                        .pick_file()
+                    {
+                        let result = crate::platform::launch_npcap_installer(&path)
+                            .map(|_| l.t(
+                                "Npcap-Setup gestartet. Nach Abschluss auf „Erneut prüfen“ klicken; UAC bestätigen.",
+                                "Npcap setup launched. Finish setup and click Recheck; approve UAC.",
+                                "Npcap-installatie gestart. Voltooi en klik Opnieuw controleren; bevestig UAC.",
+                            ).to_string());
+                        self.notify(result);
+                    }
+                }
+                if ui.button(l.t("3. Erneut prüfen", "3. Recheck", "3. Opnieuw controleren")).clicked() {
+                    self.npcap = capture::inspect_npcap();
+                    match capture::adapters() {
+                        Ok(devices) => {
+                            self.adapters = devices;
+                            self.chosen.retain(|id| self.adapters.iter().any(|a| &a.id == id));
+                            self.send_index = 0;
+                            self.load_profile();
+                        },
+                        Err(e) => self.notify(Err(e)),
+                    }
+                }
+            });
+            ui.label(RichText::new(l.t(
+                "Npcap wird nicht mitgeliefert. Nur den signierten Installer von npcap.com verwenden, Windows-UAC bestätigen und die Lizenz beachten. Das Setup arbeitet interaktiv; danach Empfang neu starten. Bei Admin-only-Npcap zusätzlich WinLLDP mit Adminrechten neu starten.",
+                "Npcap is not bundled. Use only the signed installer from npcap.com, approve Windows UAC and review its license. Setup runs interactively; restart capture afterward. For admin-only Npcap, restart WinLLDP elevated.",
+                "Npcap is niet meegeleverd. Gebruik alleen de ondertekende installer van npcap.com, bevestig UAC en lees de licentie. Start na installatie de ontvangst opnieuw. Bij admin-only Npcap WinLLDP als beheerder herstarten.",
+            )).small().weak());
+        });
+        if !self.capture_errors.is_empty() {
+            ui.add_space(6.);
+            for (adapter, problem) in &self.capture_errors {
+                ui.colored_label(Color32::from_rgb(214, 151, 75),
+                    format!("{}: {}", self.name(adapter), problem));
+            }
+        }
+    }
     fn adapters_ui(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
         Self::title(
@@ -785,6 +855,8 @@ impl App {
                 "Selecteer interfaces voor gelijktijdige ontvangst.",
             ),
         );
+        self.npcap_setup_ui(ui);
+        ui.add_space(10.);
         ui.horizontal(|ui| {
             if ui
                 .button(l.t("Neu erkennen", "Refresh adapters", "Adapters vernieuwen"))
