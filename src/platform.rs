@@ -174,8 +174,12 @@ pub fn launch_npcap_installer(path: &std::path::Path) -> Result<(), String> {
     #[cfg(windows)]
     unsafe {
         use std::os::windows::ffi::OsStrExt;
-        let absolute = path.canonicalize().map_err(|e| e.to_string())?;
-        let exe: Vec<u16> = absolute.as_os_str().encode_wide().chain(Some(0)).collect();
+        if !path.is_absolute() {
+            return Err("An absolute path to the downloaded Npcap setup is required".into());
+        }
+        // File dialogs already return an absolute path. Avoid a \\?\ prefix,
+        // which Windows ShellExecute may reject even though File APIs support it.
+        let exe: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
         let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
         let result = windows_sys::Win32::UI::Shell::ShellExecuteW(
             std::ptr::null_mut(),
