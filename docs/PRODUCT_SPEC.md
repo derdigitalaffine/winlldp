@@ -1,6 +1,6 @@
 # WinLLDP – Produktspezifikation
 
-Stand: 04.11.2026. Anforderungsinterview läuft.
+Stand: 04.11.2026. Interview abgeschlossen; autonome Fertigstellung beauftragt.
 
 ## Bestätigt
 - Windows-Anwendung als hochwertiger LLDP-Client für Windows 10 und Windows 11.
@@ -24,18 +24,21 @@ Stand: 04.11.2026. Anforderungsinterview läuft.
 - Eigenes Appsymbol: Nachrichtendienst-Otter, der an einem RJ45-Port lauscht. Das Motiv auch klein in die Oberfläche integrieren.
 - MIT-Lizenz für den eigenen Projektcode; Hinweise und Lizenzen eingebundener Fremdkomponenten separat erhalten.
 
-## Noch offen
-- CPU-Architekturen.
-- Technischer Umfang und Voraussetzungen des Betriebs ohne Administratorrechte sowie des Betriebs mit Administratorrechten/Npcap.
-- Empfang/Senden je Adapter, automatische Adapterauswahl und mehrere Adapter gleichzeitig.
-- Detaillierte Darstellung aller LLDP-Daten einschließlich LLDP-MED und herstellerspezifischer Erweiterungen; zusätzliches CDP ist noch unbestätigt.
-- Konkrete TLV-Funktionsmatrix für eigene LLDP-Ankündigungen; Profile und weitere Komfortfunktionen noch offen.
-- Details zu Live-Aktualisierung, Aufbewahrung des Änderungsprotokolls, Exportformaten und Diagnose.
-- UI-Details, Sprache und Verhalten eines aktiven Sendebetriebs im Tray bzw. nach einem Neustart.
-- Installerumfang und optionaler Autostart.
-- Signatur und konkrete Windows-Abnahme.
+## Ausführungsentscheidungen
+- Windows 10/11 x64; ARM und 32 Bit sind nicht Bestandteil dieses Releases.
+- Rust mit nativer egui-Oberfläche, ohne Browser-/WebView- oder .NET-Laufzeitabhängigkeit.
+- Deutsch, Englisch und Niederländisch; Standardsprache Deutsch.
+- Automatischer Windows-Darkmode, zusätzlich hell/dunkel wählbar.
+- Ein aktiver Sender läuft im Tray weiter. Nach vollständigem Prozessneustart ist Senden immer aus.
+- CSV-, JSON- und klassischer Ethernet-PCAP-Export; PCAP-Import für Offlineanalyse.
+- Npcap separat installieren; Standardzugriff ohne Erhöhung soweit die Treiberberechtigung dies erlaubt, UI-Aktion für administrativen Neustart.
+- Ohne Capturetreiber kein erfundener Live-LLDP-Empfang; Adapterdiagnose und Offlineanalyse bleiben verfügbar.
+- Empfang mehrerer ausgewählter Adapter gleichzeitig, Senden bewusst auf dem gewählten Adapter.
+- Lokales Änderungsprotokoll bis 2000 Ereignisse; maximal 2048 Frames und 4096 Nachbarn im Arbeitsspeicher.
+- MIT-Lizenz eigener Code, Drittanbieterhinweise separat; unsigned Release.
+- Installation pro Benutzer ohne Windows-Dienst; kein automatischer Sendestart.
 
 ## Lieferziel
 Versionierte Binärartefakte unter build/ einschließlich Versions-/Quellstand und Prüfsummen.
 Portable EXE und Installationspaket; reproduzierbare Buildanleitung.
-Aktuell existiert noch keine Implementierung und kein kompilierter Build.
+Implementierung, Tests und Buildnachweise werden in vier PRs geliefert.
