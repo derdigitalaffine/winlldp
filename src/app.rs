@@ -474,7 +474,7 @@ impl App {
             )).small().weak());
             if !self.capture_errors.is_empty() {
                 ui.colored_label(Color32::from_rgb(216, 139, 67), l.t(
-                    "Npcap/Empfang prüfen", "Check Npcap/capture", "Controleer Npcap/ontvangst"));
+                    "Empfang prüfen", "Check capture", "Controleer ontvangst"));
                 if ui.small_button(l.t("Diagnose / Installation",
                     "Diagnostics / install", "Diagnose / installatie")).clicked() {
                     self.page = 1;
@@ -1013,6 +1013,24 @@ impl App {
         let a = self.adapters[self.send_index].clone();
         let active = self.tx_active.contains(&a.id);
         let pending = self.tx_pending.contains(&a.id);
+        if self.settings.capture_backend != CaptureBackend::Npcap {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(l.t(
+                    "Windows Packet Monitor empfängt nur. LLDP-Senden benötigt den optionalen Npcap-Treiber.",
+                    "Windows Packet Monitor is receive-only. LLDP advertising requires optional Npcap.",
+                    "Windows Packet Monitor ontvangt alleen. LLDP-verzenden vereist optioneel Npcap."
+                )).small().weak());
+                if ui.small_button(l.t(
+                    "Für Senden auf Npcap wechseln",
+                    "Switch to Npcap for advertising",
+                    "Overschakelen naar Npcap voor verzenden"
+                )).clicked() {
+                    self.settings.capture_backend = CaptureBackend::Npcap;
+                    self.start();
+                    self.save();
+                }
+            });
+        }
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(if active {
@@ -1030,7 +1048,8 @@ impl App {
             let valid = protocol::encode(&self.profile, a.mac, false);
             if ui
                 .add_enabled(
-                    !pending && (active || valid.is_ok()) && self.ready.contains(&a.id),
+                    self.settings.capture_backend == CaptureBackend::Npcap
+                        && !pending && (active || valid.is_ok()) && self.ready.contains(&a.id),
                     egui::Button::new(if active {
                         l.t("Sender stoppen", "Stop advertising", "Verzenden stoppen")
                     } else {
@@ -1213,7 +1232,7 @@ impl App {
    if ui.checkbox(&mut self.settings.keep_history,l.t("Änderungsprotokoll lokal aufbewahren","Keep activity log locally","Activiteitenlogboek lokaal bewaren")).changed(){if !self.settings.keep_history{let _=std::fs::remove_file(settings::data_dir().join("history.json"));}self.save();}
   });
         ui.add_space(16.);
-        Self::surface(ui).inner_margin(18.).show(ui,|ui|{ui.strong(l.t("Zugriffsmodus","Access mode","Toegangsmodus"));let admin=crate::platform::is_admin();ui.label(if admin{l.t("Administratorzugriff aktiv","Administrator access active","Beheerderstoegang actief")}else{l.t("Standardzugriff ohne Administratorrechte","Standard access without administrator rights","Standaardtoegang zonder beheerdersrechten")});ui.label(l.t("Live-Empfang und Senden benötigen Npcap. Normaler Zugriff hängt von dessen Berechtigungen ab. Ohne Treiber ist Offlineanalyse möglich.","Live capture and advertising require Npcap. Standard access depends on its permissions. Offline analysis works without a driver.","Live-ontvangst en verzenden vereisen Npcap. Standaardtoegang hangt af van de rechten. Offline-analyse werkt zonder stuurprogramma."));
+        Self::surface(ui).inner_margin(18.).show(ui,|ui|{ui.strong(l.t("Zugriffsmodus","Access mode","Toegangsmodus"));let admin=crate::platform::is_admin();ui.label(if admin{l.t("Administratorzugriff aktiv","Administrator access active","Beheerderstoegang actief")}else{l.t("Standardzugriff ohne Administratorrechte","Standard access without administrator rights","Standaardtoegang zonder beheerdersrechten")});ui.label(l.t("Live-LLDP-Empfang nutzt standardmäßig Windows Packet Monitor (Adminrechte nötig, kein Npcap erforderlich), bei Bedarf Npcap als Fallback. LLDP-Senden benötigt weiterhin Npcap.","Live LLDP receive defaults to Windows Packet Monitor (admin rights, no Npcap required), with Npcap fallback. LLDP advertising still requires Npcap.","Live LLDP-ontvangst gebruikt standaard Windows Packet Monitor (beheerder vereist, geen Npcap nodig), met Npcap als terugvaloptie. Verzenden vereist Npcap."));
    if !admin&&ui.button(l.t("Als Administrator neu starten …","Restart as administrator …","Opnieuw starten als beheerder …")).clicked(){match crate::platform::elevate(){Ok(())=>{self.exit=true;ctx.send_viewport_cmd(egui::ViewportCommand::Close);},Err(e)=>self.notify(Err(e))}}
    if admin && ui.button(l.t("Mit Standardzugriff neu starten …", "Restart with standard access …", "Opnieuw starten met standaardtoegang …")).clicked() {
        match crate::platform::standard_access() {
