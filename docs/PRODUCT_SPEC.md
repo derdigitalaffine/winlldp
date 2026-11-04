@@ -38,6 +38,13 @@ Stand: 04.11.2026. Interview abgeschlossen; autonome Fertigstellung beauftragt.
 - MIT-Lizenz eigener Code, Drittanbieterhinweise separat; unsigned Release.
 - Installation pro Benutzer ohne Windows-Dienst; kein automatischer Sendestart.
 
+## CLI
+- Über `WinLLDP.exe --cli` startbar; zusätzliche Console-EXE für normale Shell-/Pipe-Verwendung.
+- Adapter auflisten/auswählen, Live-Empfang zeitlich begrenzen oder mit Ctrl+C beenden.
+- Offline-PCAP lesen; JSON/CSV/PCAP in Datei bzw. Text auf stdout exportieren.
+- Senden ausschließlich durch explizites `--send PROFILE.json` mit einem ausgewählten Adapter.
+- GUI und CLI verwenden denselben Parser, Sender und Exportcode.
+
 ## Lieferziel
 Versionierte Binärartefakte unter build/ einschließlich Versions-/Quellstand und Prüfsummen.
 Portable EXE und Installationspaket; reproduzierbare Buildanleitung.
