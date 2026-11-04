@@ -663,127 +663,77 @@ impl App {
     }
     fn neighbor_details(&self, ui: &mut egui::Ui, index: usize) {
         let l = self.settings.language;
-                    let n = &self.monitor.neighbors[index];
-                    let a = &n.advertisement;
-                    Self::surface(ui)
-                        .inner_margin(18.)
-                        .show(ui, |ui| {
-                            ui.label(
-                                RichText::new(l.t("SWITCH", "SWITCH", "SWITCH"))
-                                    .color(ui.visuals().hyperlink_color)
-                                    .strong(),
-                            );
-                            ui.label(
-                                RichText::new(if a.system_name.is_empty() {
-                                    &a.chassis_id
-                                } else {
-                                    &a.system_name
-                                })
-                                .size(24.)
-                                .strong(),
-                            );
-                            ui.add_space(8.);
-                            ui.label(
-                                RichText::new(format!(
-                                    "{}  {}",
-                                    l.t("Port", "Port", "Poort"),
-                                    a.port_id
-                                ))
-                                .size(21.),
-                            );
-                            if !a.port_description.is_empty() {
-                                ui.label(&a.port_description);
-                            }
-                            ui.separator();
-                            egui::Grid::new("summary")
-                                .num_columns(2)
-                                .striped(true)
-                                .show(ui, |ui| {
-                                    for (k, v) in [
-                                        ("Chassis ID", a.chassis_id.clone()),
-                                        (
-                                            l.t("Adapter", "Adapter", "Adapter"),
-                                            self.name(&n.adapter),
-                                        ),
-                                        ("MAC", a.source_mac.clone()),
-                                        ("TTL", format!("{} s", a.ttl)),
-                                        (
-                                            l.t("Zuletzt gesehen", "Last seen", "Laatst gezien"),
-                                            n.last_seen.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
-                                        ),
-                                    ] {
-                                        ui.label(RichText::new(k).weak());
-                                        ui.add(egui::Label::new(v).selectable(true).wrap());
-                                        ui.end_row();
-                                    }
-                                });
-                            if n.adapter == "PCAP" {
-                                ui.label(l.t(
-                                    "Offline-Aufzeichnung · Zeitstempel aus Datei",
-                                    "Offline capture · timestamps from file",
-                                    "Offline-opname · tijdstempels uit bestand",
-                                ));
-                            }
-                            if !a.system_description.is_empty() {
-                                ui.add_space(6.);
-                                ui.add(
-                                    egui::Label::new(&a.system_description)
-                                        .selectable(true)
-                                        .wrap(),
-                                );
-                            }
-                        });
-                    ui.add_space(12.);
-                    ui.strong(l.t(
-                        "Vollständige LLDP-Daten",
-                        "Complete LLDP data",
-                        "Volledige LLDP-gegevens",
-                    ));
-                    ui.label(
-                        RichText::new(l.t(
-                            "Alle TLVs, einschließlich unbekannter Erweiterungen.",
-                            "All TLVs, including unknown extensions.",
-                            "Alle TLV's, inclusief onbekende uitbreidingen.",
-                        ))
-                        .weak(),
-                    );
-                    for (i, t) in a.tlvs.iter().enumerate() {
-                        egui::CollapsingHeader::new(format!(
-                            "{:02}  {} · {}",
-                            t.kind,
-                            t.name,
-                            t.value_hex.split_whitespace().count()
-                        ))
-                        .id_salt(i)
-                        .show(ui, |ui| {
-                            for (k, v) in &t.fields {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.strong(k);
-                                    ui.add(egui::Label::new(v).selectable(true).wrap());
-                                });
-                            }
-                            ui.label(
-                                RichText::new(l.t(
-                                    "Rohdaten (Hex)",
-                                    "Raw data (hex)",
-                                    "Ruwe gegevens (hex)",
-                                ))
-                                .weak(),
-                            );
-                            ui.add(
-                                egui::Label::new(RichText::new(&t.value_hex).monospace())
-                                    .selectable(true)
-                                    .wrap(),
-                            );
-                            if ui
-                                .small_button(l.t("Kopieren", "Copy", "Kopiëren"))
-                                .clicked()
-                            {
-                                ui.ctx().copy_text(t.value_hex.clone());
-                            }
-                        });
+        let neighbor = &self.monitor.neighbors[index];
+        let advert = &neighbor.advertisement;
+        ui.label(RichText::new(if advert.system_name.is_empty() {
+            &advert.chassis_id
+        } else {
+            &advert.system_name
+        }).size(20.).strong());
+        ui.label(RichText::new(format!("{}: {}",
+            l.t("Port", "Port", "Poort"), advert.port_id)).size(15.));
+        if !advert.port_description.is_empty() {
+            ui.label(RichText::new(&advert.port_description).small().weak());
+        }
+        ui.add_space(8.);
+        Self::surface(ui).show(ui, |ui| {
+            egui::Grid::new("neighbor-detail-summary")
+                .num_columns(2).spacing([15., 7.]).show(ui, |ui| {
+                for (label, value) in [
+                    ("Chassis ID", advert.chassis_id.clone()),
+                    (l.t("Adapter", "Adapter", "Adapter"), self.name(&neighbor.adapter)),
+                    ("MAC", advert.source_mac.clone()),
+                    ("TTL", format!("{} s", advert.ttl)),
+                    (l.t("Zuletzt (UTC)", "Last seen (UTC)", "Laatst (UTC)"),
+                        neighbor.last_seen.format("%Y-%m-%d %H:%M:%S").to_string()),
+                ] {
+                    ui.label(RichText::new(label).small().weak());
+                    ui.add(egui::Label::new(value).selectable(true).wrap());
+                    ui.end_row();
+                }
+            });
+            if neighbor.adapter == "PCAP" {
+                ui.label(RichText::new(l.t(
+                    "Offline-Aufzeichnung", "Offline capture", "Offline-opname"
+                )).small().weak());
+            }
+            if !advert.system_description.is_empty() {
+                ui.separator();
+                ui.add(egui::Label::new(&advert.system_description)
+                    .selectable(true).wrap());
+            }
+        });
+        ui.add_space(10.);
+        ui.label(RichText::new(format!("LLDP TLVs ({})", advert.tlvs.len())).strong());
+        for (index, tlv) in advert.tlvs.iter().enumerate() {
+            egui::CollapsingHeader::new(format!(
+                "{:02}  {} · {} B",
+                tlv.kind, tlv.name, tlv.value_hex.split_whitespace().count()
+            )).id_salt(("detail-tlv", index)).show(ui, |ui| {
+                egui::Grid::new(("detail-fields", index))
+                    .num_columns(2).spacing([12., 5.]).show(ui, |ui| {
+                    for (name, value) in &tlv.fields {
+                        ui.label(RichText::new(name).small().weak());
+                        ui.add(egui::Label::new(value).selectable(true).wrap());
+                        ui.end_row();
                     }
-
+                });
+                ui.add_space(4.);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(l.t(
+                        "Hexdaten", "Hex data", "Hexgegevens"
+                    )).small().weak());
+                    if ui.small_button(l.t(
+                        "Kopieren", "Copy", "Kopiëren"
+                    )).clicked() {
+                        ui.ctx().copy_text(tlv.value_hex.clone());
+                    }
+                });
+                ui.add(egui::Label::new(
+                    RichText::new(&tlv.value_hex).monospace()
+                ).selectable(true).wrap());
+            });
+        }
     }
     fn capture_backend_ui(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
@@ -1408,60 +1358,37 @@ impl App {
     fn about(&self, ui: &mut egui::Ui) {
         let l = self.settings.language;
         ui.horizontal(|ui| {
-            ui.add(egui::Image::new((self.logo.id(), Vec2::splat(128.))));
+            ui.add(egui::Image::new((self.logo.id(), Vec2::splat(48.))));
             ui.vertical(|ui| {
-                ui.label(RichText::new("WinLLDP").size(38.).strong());
-                ui.label(format!(
-                    "Version {} · Windows 10 / 11 · x64",
-                    env!("CARGO_PKG_VERSION")
-                ));
-                ui.label(l.t(
-                    "Ein offenes Ohr für dein Netzwerk.",
-                    "An open ear for your network.",
-                    "Een luisterend oor voor je netwerk.",
-                ));
+                ui.label(RichText::new("WinLLDP").size(21.).strong());
+                ui.label(RichText::new(format!(
+                    "v{} · Windows 10 / 11 · x64", env!("CARGO_PKG_VERSION")
+                )).small().weak());
             });
         });
-        ui.add_space(20.);
-        ui.label(
-            RichText::new(l.t(
-                "Entwickelt von Dominik Tröster",
-                "Developed by Dominik Tröster",
-                "Ontwikkeld door Dominik Tröster",
-            ))
-            .size(20.)
-            .strong(),
-        );
-        ui.label("Verbandsgemeinde Otterbach-Otterberg");
         ui.add_space(12.);
-        ui.strong(l.t(
-            "Freie Software · MIT-Lizenz",
-            "Free software · MIT License",
-            "Vrije software · MIT-licentie",
+        ui.label(l.t(
+            "LLDP-Nachbarn entdecken, analysieren und optional selbst senden.",
+            "Discover and inspect LLDP neighbors, with optional advertising.",
+            "LLDP-buren ontdekken en analyseren, optioneel zelf verzenden."
         ));
-        ui.label(l.t("Der eigene Programmcode steht unter der MIT-Lizenz. Die Software wird ohne Gewährleistung bereitgestellt.","The application code is licensed under MIT. The software is provided without warranty.","De programmacode valt onder de MIT-licentie. De software wordt zonder garantie geleverd."));
-        ui.hyperlink_to(
-            "GitHub · WinLLDP",
-            "https://github.com/derdigitalaffine/winlldp",
-        );
+        ui.label(RichText::new(l.t(
+            "Entwickelt von Dominik Tröster · Verbandsgemeinde Otterbach-Otterberg",
+            "Developed by Dominik Tröster · Verbandsgemeinde Otterbach-Otterberg",
+            "Ontwikkeld door Dominik Tröster · Verbandsgemeinde Otterbach-Otterberg"
+        )).small().weak());
+        ui.hyperlink_to("GitHub · WinLLDP",
+            "https://github.com/derdigitalaffine/winlldp");
+        ui.add_space(9.);
         egui::CollapsingHeader::new(l.t(
-            "MIT-Lizenz lesen",
-            "Read MIT License",
-            "MIT-licentie lezen",
-        ))
-        .show(ui, |ui| {
-            ui.add(
-                egui::Label::new(include_str!("../LICENSE"))
-                    .selectable(true)
-                    .wrap(),
-            );
+            "Lizenz (MIT)", "License (MIT)", "Licentie (MIT)"
+        )).show(ui, |ui| {
+            ui.add(egui::Label::new(include_str!("../LICENSE"))
+                .selectable(true).wrap());
         });
         egui::CollapsingHeader::new(l.t(
-            "Drittanbieter und Hinweise",
-            "Third-party notices",
-            "Derden en kennisgevingen",
-        ))
-        .show(ui, |ui| {
+            "Drittanbieter", "Third-party notices", "Derden"
+        )).show(ui, |ui| {
             ui.label(include_str!("../THIRD_PARTY_NOTICES.md"));
         });
     }
