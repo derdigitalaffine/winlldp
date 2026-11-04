@@ -20,7 +20,9 @@ Die Release-Artefakte finden sich unter [GitHub Releases](https://github.com/der
 
 Die Programme sind unsigniert; Npcap ist separat erforderlich, um live LLDP zu empfangen oder zu senden. Das Installerpaket enthält den Npcap-Treiber **nicht**. Unter **Adapter** zeigt die UI den Npcap-Zustand sowie konkrete Empfangsfehler. Dort lässt sich die offizielle Npcap-Downloadseite öffnen und der heruntergeladene Setup-Assistent aus WinLLDP mit UAC starten. Anschließend Treiber erneut prüfen und Empfang neu starten. Für Admin-only-Npcap kann WinLLDP bewusst erhöht neu gestartet werden. Vor Live-Sendebetrieb die Berechtigung für das betroffene Netzwerk klären.
 
-**Hinweis:** Der kostenlose Npcap-Installer wird aus Lizenzgründen weder gebündelt noch unbemerkt heruntergeladen oder installiert. Den signierten Installer direkt von npcap.com beziehen und dessen Lizenz prüfen. Details: [Npcap-Diagnose und Installation](docs/NPCAP_DIAGNOSTICS.md).\n\n## Build und QA
+**Hinweis:** Der kostenlose Npcap-Installer wird aus Lizenzgründen weder gebündelt noch unbemerkt heruntergeladen oder installiert. Den signierten Installer direkt von npcap.com beziehen und dessen Lizenz prüfen. Details: [Npcap-Diagnose und Installation](docs/NPCAP_DIAGNOSTICS.md).
+
+## Build und QA
 Anleitung: [Windows-Build](docs/BUILD_WINDOWS.md). Release- und bekannte Prüfeinschränkungen: [Release Notes v1.0.2](docs/RELEASE_NOTES_v1.0.2.md), [Akzeptanztests](docs/ACCEPTANCE_TESTS.md).
 
 ```powershell
