@@ -1411,117 +1411,111 @@ impl eframe::App for App {
             }
         }
         egui::TopBottomPanel::top("top")
-            .exact_height(54.)
+            .exact_height(49.)
             .show(ctx, |ui| {
                 ui.horizontal_centered(|ui| {
-                    ui.add_space(8.);
-                    ui.add(egui::Image::new((self.logo.id(), Vec2::splat(34.))));
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("WinLLDP").size(19.).strong());
-                        ui.label(
-                            RichText::new("NETWORK DISCOVERY")
-                                .size(10.)
-                                .color(ui.visuals().hyperlink_color),
-                        );
-                    });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button(if self.engine.running() {
-                                l.t("Empfang stoppen", "Stop capture", "Ontvangst stoppen")
+                    ui.add(egui::Image::new((self.logo.id(), Vec2::splat(27.))));
+                    ui.label(RichText::new("WinLLDP").size(16.).strong());
+                    ui.separator();
+                    for (page, name) in [
+                        (0, l.t("Nachbarn", "Neighbors", "Buren")),
+                        (1, l.t("Adapter", "Adapters", "Adapters")),
+                        (2, l.t("Senden", "Advertise", "Verzenden")),
+                    ] {
+                        ui.selectable_value(&mut self.page, page, name);
+                    }
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.menu_button(l.t("Mehr", "More", "Meer"), |ui| {
+                                for (page, label) in [
+                                    (3, l.t("Protokoll", "Activity log", "Logboek")),
+                                    (4, l.t("Einstellungen", "Settings", "Instellingen")),
+                                    (5, l.t("Über WinLLDP", "About", "Over WinLLDP")),
+                                ] {
+                                    if ui.button(label).clicked() {
+                                        self.page = page;
+                                        ui.close();
+                                    }
+                                }
+                                ui.separator();
+                                if ui.button(l.t("Beenden", "Quit", "Afsluiten")).clicked() {
+                                    self.exit = true;
+                                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                    ui.close();
+                                }
+                            });
+                            let running = self.engine.running();
+                            let label = if running {
+                                l.t("Stopp", "Stop", "Stop")
                             } else {
                                 l.t("Empfang starten", "Start capture", "Ontvangst starten")
-                            })
-                            .clicked()
-                        {
-                            if self.engine.running() {
-                                self.stop();
+                            };
+                            let action = egui::Button::new(if running {
+                                RichText::new(label)
                             } else {
-                                self.start();
+                                RichText::new(label).color(Color32::WHITE)
+                            });
+                            let action = if running { action } else {
+                                action.fill(Color32::from_rgb(0, 111, 86))
+                            };
+                            if ui.add_enabled(running || !self.chosen.is_empty(), action)
+                                .clicked() {
+                                if running {
+                                    self.stop();
+                                } else {
+                                    self.start();
+                                }
                             }
                         }
-                        ui.label(
-                            RichText::new(if self.tx_active.is_empty() {
-                                l.t("Sender aus", "Advertising off", "Verzenden uit")
-                            } else {
-                                l.t("Sender aktiv", "Advertising active", "Verzenden actief")
-                            })
-                            .color(if self.tx_active.is_empty() {
-                                ui.visuals().weak_text_color()
-                            } else {
-                                GREEN
-                            }),
-                        );
-                    });
+                    );
                 });
             });
         egui::TopBottomPanel::bottom("status")
-            .min_height(25.)
+            .exact_height(27.)
             .show(ctx, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new(format!(
-                            "{} {} · {} {}",
-                            self.ready.len(),
-                            l.t("Adapter aktiv", "adapters active", "adapters actief"),
-                            self.monitor.received,
-                            l.t("Pakete", "packets", "pakketten")
-                        ))
-                        .small(),
-                    );
-                    if !self.message.is_empty() {
+                ui.horizontal_centered(|ui| {
+                    let status = if !self.capture_errors.is_empty() {
+                        l.t("Empfangsfehler", "Capture error", "Ontvangstfout")
+                    } else if !self.ready.is_empty() {
+                        l.t("Empfang aktiv", "Listening", "Ontvangst actief")
+                    } else {
+                        l.t("Empfang inaktiv", "Not listening", "Ontvangst inactief")
+                    };
+                    ui.label(RichText::new(status).small().color(
+                        if !self.capture_errors.is_empty() {
+                            Color32::from_rgb(211, 127, 76)
+                        } else if !self.ready.is_empty() {
+                            GREEN
+                        } else {
+                            ui.visuals().weak_text_color()
+                        }
+                    ));
+                    ui.separator();
+                    ui.label(RichText::new(format!(
+                        "{} {} · {} {}",
+                        self.ready.len(),
+                        l.t("Adapter", "adapters", "adapters"),
+                        self.monitor.neighbors.len(),
+                        l.t("Nachbarn", "neighbors", "buren"),
+                    )).small().weak());
+                    if !self.tx_active.is_empty() {
                         ui.separator();
-                        ui.colored_label(
+                        ui.label(RichText::new(l.t(
+                            "Sender aktiv", "Advertising", "Verzenden actief"
+                        )).small().color(GREEN));
+                    }
+                    if !self.message.is_empty() {
+                        let short = self.message.chars().take(86).collect::<String>();
+                        ui.separator();
+                        ui.label(RichText::new(short).small().color(
                             if self.is_error {
-                                Color32::from_rgb(226, 134, 85)
+                                Color32::from_rgb(211, 127, 76)
                             } else {
-                                ui.visuals().text_color()
-                            },
-                            &self.message,
-                        );
+                                ui.visuals().weak_text_color()
+                            }
+                        )).on_hover_text(&self.message);
                     }
-                });
-            });
-        egui::SidePanel::left("navigation")
-            .exact_width(145.)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.add_space(18.);
-                ui.label(
-                    RichText::new(l.t("ARBEITSBEREICH", "WORKSPACE", "WERKRUIMTE"))
-                        .small()
-                        .weak(),
-                );
-                ui.add_space(12.);
-                for (i, label) in [
-                    l.t("Übersicht", "Overview", "Overzicht"),
-                    l.t("Adapter", "Adapters", "Adapters"),
-                    l.t("LLDP senden", "Advertise LLDP", "LLDP verzenden"),
-                    l.t("Protokoll", "Activity", "Activiteit"),
-                    l.t("Einstellungen", "Settings", "Instellingen"),
-                    l.t("Über WinLLDP", "About WinLLDP", "Over WinLLDP"),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 31.],
-                            egui::Button::new(*label)
-                                .selected(self.page == i)
-                                .frame(self.page == i),
-                        )
-                        .clicked()
-                    {
-                        self.page = i;
-                    }
-                }
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                    ui.add_space(16.);
-                    if ui.button(l.t("Beenden", "Quit", "Afsluiten")).clicked() {
-                        self.exit = true;
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                    ui.label(RichText::new(concat!("v", env!("CARGO_PKG_VERSION"), " · MIT")).small().weak());
                 });
             });
         egui::CentralPanel::default()
@@ -1531,7 +1525,8 @@ impl eframe::App for App {
                     self.overview(ui);
                 } else {
                     egui::ScrollArea::vertical()
-                        .id_salt("page")
+                        .id_salt(("workspace", self.page))
+                        .auto_shrink([false, false])
                         .show(ui, |ui| match self.page {
                             1 => self.adapters_ui(ui),
                             2 => self.sender(ui),
