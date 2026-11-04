@@ -4424,7 +4424,7 @@ dependencies = [
 
 [[package]]
 name = "winlldp"
-version = "1.0.2"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "ctrlc",
@@ -4437,6 +4437,7 @@ dependencies = [
  "serde_json",
  "tray-icon",
  "windows-sys 0.61.2",
+ "winptap",
  "winreg",
  "winresource",
 ]
@@ -4457,6 +4458,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winptap"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d4976055b9b4153a419e16b28f5b4947270f0d7b36d773a52ef31f66c13d547"
+dependencies = [
+ "winptap-core",
+ "winptap-native",
+ "winptap-pktmon",
+]
+
+[[package]]
+name = "winptap-core"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2215ab2522c1fd45b49f1693197e21c31f3c97775cca636374aeb57ecc2f8c18"
+
+[[package]]
+name = "winptap-native"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c129d88afb20350d5690b0e4faa9869997b49978ad7af4da0928f9ac40e5c70c"
+dependencies = [
+ "windows-sys 0.61.2",
+ "winptap-core",
+]
+
+[[package]]
+name = "winptap-pktmon"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "517f1838588a69628aeb5183265070c3f26f88e906e626701ba3f6155fb7eb68"
+dependencies = [
+ "windows-sys 0.61.2",
+ "winptap-core",
 ]
 
 [[package]]

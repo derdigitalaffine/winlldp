@@ -1,4 +1,4 @@
-use crate::protocol::TxProfile;
+use crate::{capture::CaptureBackend, protocol::TxProfile};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -31,6 +31,7 @@ pub struct Settings {
     pub theme: Theme,
     pub close_to_tray: bool,
     pub keep_history: bool,
+    pub capture_backend: CaptureBackend,
     pub profiles: BTreeMap<String, TxProfile>,
 }
 impl Default for Settings {
@@ -40,6 +41,7 @@ impl Default for Settings {
             theme: Theme::System,
             close_to_tray: true,
             keep_history: true,
+            capture_backend: CaptureBackend::Auto,
             profiles: BTreeMap::new(),
         }
     }

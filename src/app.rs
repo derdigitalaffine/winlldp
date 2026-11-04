@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 use winlldp::{
-    capture::{self, Adapter, Engine, Notice},
+    capture::{self, Adapter, CaptureBackend, Engine, Notice},
     model::{Event, Monitor},
     protocol::{self, TxProfile},
     settings::{self, Language as L, Settings, Theme},
@@ -27,6 +27,9 @@ pub struct App {
     detail_key: Option<(String, String, String)>,
     npcap: Result<capture::NpcapReport, String>,
     capture_errors: BTreeMap<String, String>,
+    backend_names: BTreeMap<String, String>,
+    backend_notes: BTreeMap<String, String>,
+    native_report: Option<Result<String, String>>,
     own_frames: u64,
     message: String,
     is_error: bool,
@@ -84,6 +87,9 @@ impl App {
             detail_key: None,
             npcap: capture::inspect_npcap(),
             capture_errors: BTreeMap::new(),
+            backend_names: BTreeMap::new(),
+            backend_notes: BTreeMap::new(),
+            native_report: None,
             own_frames: 0,
             message: String::new(),
             is_error: false,
@@ -231,6 +237,8 @@ impl App {
     fn start(&mut self) {
         self.ready.clear();
         self.capture_errors.clear();
+        self.backend_names.clear();
+        self.backend_notes.clear();
         self.npcap = capture::inspect_npcap();
         self.tx_active.clear();
         self.tx_pending.clear();
@@ -240,7 +248,7 @@ impl App {
             .filter(|a| self.chosen.contains(&a.id))
             .cloned()
             .collect::<Vec<_>>();
-        let r = self.engine.start(&devices).map(|_| {
+        let r = self.engine.start_with(&devices, self.settings.capture_backend).map(|_| {
             self.settings
                 .language
                 .t(
@@ -368,6 +376,14 @@ impl App {
                     let _ = self.monitor.ingest(&p.adapter, p.bytes, p.at);
                 }
                 Notice::LocalFrame(_id) => self.own_frames += 1,
+                Notice::Backend(id, backend) => {
+                    self.backend_names.insert(id.clone(), backend);
+                    self.monitor.log(&self.name(&id), "backend_selected", String::new());
+                }
+                Notice::Diagnostic(id, detail) => {
+                    self.backend_notes.insert(id.clone(), detail.clone());
+                    self.monitor.log(&self.name(&id), "capture_diagnostic", detail);
+                },
                 Notice::Status(id, s) => {
                     if s == "capture_started" {
                         self.capture_errors.remove(&id);
@@ -456,9 +472,9 @@ impl App {
                 self.own_frames, l.t("lokale Frames ausgeblendet",
                     "local echoes hidden", "lokale frames verborgen")
             )).small().weak());
-            if self.npcap.is_err() || !self.capture_errors.is_empty() {
+            if !self.capture_errors.is_empty() {
                 ui.colored_label(Color32::from_rgb(216, 139, 67), l.t(
-                    "Npcap/Empfang prüfen", "Check Npcap/capture", "Controleer Npcap/ontvangst"));
+                    "Empfang prüfen", "Check capture", "Controleer ontvangst"));
                 if ui.small_button(l.t("Diagnose / Installation",
                     "Diagnostics / install", "Diagnose / installatie")).clicked() {
                     self.page = 1;
@@ -709,6 +725,76 @@ impl App {
                     }
 
     }
+    fn capture_backend_ui(&mut self, ui: &mut egui::Ui) {
+        let l = self.settings.language;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(l.t("Empfang über", "Receive via", "Ontvangst via")).strong());
+            let previous = self.settings.capture_backend;
+            egui::ComboBox::from_id_salt("capture-backend")
+                .selected_text(match previous {
+                    CaptureBackend::Auto => l.t("Automatisch", "Automatic", "Automatisch"),
+                    CaptureBackend::Windows => "Windows Packet Monitor",
+                    CaptureBackend::Npcap => "Npcap",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Auto,
+                        l.t("Automatisch (Windows → Npcap)",
+                            "Automatic (Windows → Npcap)",
+                            "Automatisch (Windows → Npcap)"));
+                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Windows,
+                        "Windows Packet Monitor (Admin)");
+                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Npcap,
+                        "Npcap");
+                });
+            if self.settings.capture_backend != previous {
+                self.start();
+                self.save();
+            }
+            if crate::platform::is_admin() {
+                ui.label(RichText::new(l.t(
+                    "Administrator", "Administrator", "Beheerder"
+                )).small().weak());
+            } else {
+                ui.label(RichText::new(l.t(
+                    "Windows-Empfang benötigt Adminrechte",
+                    "Native Windows capture requires administrator rights",
+                    "Windows-ontvangst vereist beheerdersrechten"
+                )).small().weak());
+                if ui.small_button(l.t("Als Admin neu starten …",
+                    "Restart as admin …", "Herstart als beheerder …")).clicked() {
+                    match crate::platform::elevate() {
+                        Ok(()) => {
+                            self.exit = true;
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        },
+                        Err(error) => self.notify(Err(error)),
+                    }
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(l.t(
+                "Ohne Zusatztreiber empfangen · zum Senden Npcap auswählen",
+                "Receive without an added driver · select Npcap to advertise",
+                "Ontvangen zonder extra stuurprogramma · kies Npcap om te verzenden"
+            )).small().weak());
+            if ui.small_button(l.t("Windows-Diagnose", "Windows diagnostics", "Windows-diagnose"))
+                .clicked() {
+                self.native_report = Some(capture::inspect_packet_monitor());
+            }
+        });
+        if let Some(report) = &self.native_report {
+            match report {
+                Ok(info) => {
+                    ui.label(RichText::new(format!("Windows Packet Monitor: {info}")).small().weak());
+                }
+                Err(problem) => {
+                    ui.colored_label(Color32::from_rgb(214, 151, 75),
+                        format!("Windows Packet Monitor: {problem}"));
+                }
+            }
+        }
+    }
     /// Drive the Npcap installation flow from the application, without
     /// redistributing a third-party installer or silently bypassing Windows UAC.
     fn npcap_setup_ui(&mut self, ui: &mut egui::Ui) {
@@ -807,7 +893,15 @@ impl App {
                 "Selecteer interfaces voor gelijktijdige ontvangst.",
             ),
         );
-        self.npcap_setup_ui(ui);
+        self.capture_backend_ui(ui);
+        ui.add_space(6.);
+        egui::CollapsingHeader::new(l.t(
+            "Npcap (optional · für LLDP-Senden)",
+            "Npcap (optional · for LLDP advertising)",
+            "Npcap (optioneel · voor LLDP-verzenden)",
+        ))
+            .default_open(self.settings.capture_backend == CaptureBackend::Npcap)
+            .show(ui, |ui| self.npcap_setup_ui(ui));
         ui.add_space(10.);
         ui.horizontal(|ui| {
             if ui
@@ -862,9 +956,12 @@ impl App {
                             ui.colored_label(Color32::from_rgb(218, 142, 72),
                                 l.t("Fehler", "Error", "Fout")).on_hover_text(err);
                         } else {
-                            ui.label(if self.ready.contains(&a.id) {
-                                l.t("Empfang läuft", "Listening", "Luistert")
-                            } else { l.t("Bereit", "Idle", "Gereed") });
+                            if self.ready.contains(&a.id) {
+                                ui.label(self.backend_names.get(&a.id)
+                                    .map(String::as_str).unwrap_or("Empfang aktiv"));
+                            } else {
+                                ui.label(l.t("Bereit", "Idle", "Gereed"));
+                            }
                         }
                         ui.monospace(a.mac.iter().map(|x| format!("{x:02X}"))
                             .collect::<Vec<_>>().join(":"));
@@ -916,6 +1013,24 @@ impl App {
         let a = self.adapters[self.send_index].clone();
         let active = self.tx_active.contains(&a.id);
         let pending = self.tx_pending.contains(&a.id);
+        if self.settings.capture_backend != CaptureBackend::Npcap {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(l.t(
+                    "Windows Packet Monitor empfängt nur. LLDP-Senden benötigt den optionalen Npcap-Treiber.",
+                    "Windows Packet Monitor is receive-only. LLDP advertising requires optional Npcap.",
+                    "Windows Packet Monitor ontvangt alleen. LLDP-verzenden vereist optioneel Npcap."
+                )).small().weak());
+                if ui.small_button(l.t(
+                    "Für Senden auf Npcap wechseln",
+                    "Switch to Npcap for advertising",
+                    "Overschakelen naar Npcap voor verzenden"
+                )).clicked() {
+                    self.settings.capture_backend = CaptureBackend::Npcap;
+                    self.start();
+                    self.save();
+                }
+            });
+        }
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(if active {
@@ -933,7 +1048,8 @@ impl App {
             let valid = protocol::encode(&self.profile, a.mac, false);
             if ui
                 .add_enabled(
-                    !pending && (active || valid.is_ok()) && self.ready.contains(&a.id),
+                    self.settings.capture_backend == CaptureBackend::Npcap
+                        && !pending && (active || valid.is_ok()) && self.ready.contains(&a.id),
                     egui::Button::new(if active {
                         l.t("Sender stoppen", "Stop advertising", "Verzenden stoppen")
                     } else {
@@ -1116,7 +1232,7 @@ impl App {
    if ui.checkbox(&mut self.settings.keep_history,l.t("Änderungsprotokoll lokal aufbewahren","Keep activity log locally","Activiteitenlogboek lokaal bewaren")).changed(){if !self.settings.keep_history{let _=std::fs::remove_file(settings::data_dir().join("history.json"));}self.save();}
   });
         ui.add_space(16.);
-        Self::surface(ui).inner_margin(18.).show(ui,|ui|{ui.strong(l.t("Zugriffsmodus","Access mode","Toegangsmodus"));let admin=crate::platform::is_admin();ui.label(if admin{l.t("Administratorzugriff aktiv","Administrator access active","Beheerderstoegang actief")}else{l.t("Standardzugriff ohne Administratorrechte","Standard access without administrator rights","Standaardtoegang zonder beheerdersrechten")});ui.label(l.t("Live-Empfang und Senden benötigen Npcap. Normaler Zugriff hängt von dessen Berechtigungen ab. Ohne Treiber ist Offlineanalyse möglich.","Live capture and advertising require Npcap. Standard access depends on its permissions. Offline analysis works without a driver.","Live-ontvangst en verzenden vereisen Npcap. Standaardtoegang hangt af van de rechten. Offline-analyse werkt zonder stuurprogramma."));
+        Self::surface(ui).inner_margin(18.).show(ui,|ui|{ui.strong(l.t("Zugriffsmodus","Access mode","Toegangsmodus"));let admin=crate::platform::is_admin();ui.label(if admin{l.t("Administratorzugriff aktiv","Administrator access active","Beheerderstoegang actief")}else{l.t("Standardzugriff ohne Administratorrechte","Standard access without administrator rights","Standaardtoegang zonder beheerdersrechten")});ui.label(l.t("Live-LLDP-Empfang nutzt standardmäßig Windows Packet Monitor (Adminrechte nötig, kein Npcap erforderlich), bei Bedarf Npcap als Fallback. LLDP-Senden benötigt weiterhin Npcap.","Live LLDP receive defaults to Windows Packet Monitor (admin rights, no Npcap required), with Npcap fallback. LLDP advertising still requires Npcap.","Live LLDP-ontvangst gebruikt standaard Windows Packet Monitor (beheerder vereist, geen Npcap nodig), met Npcap als terugvaloptie. Verzenden vereist Npcap."));
    if !admin&&ui.button(l.t("Als Administrator neu starten …","Restart as administrator …","Opnieuw starten als beheerder …")).clicked(){match crate::platform::elevate(){Ok(())=>{self.exit=true;ctx.send_viewport_cmd(egui::ViewportCommand::Close);},Err(e)=>self.notify(Err(e))}}
    if admin && ui.button(l.t("Mit Standardzugriff neu starten …", "Restart with standard access …", "Opnieuw starten met standaardtoegang …")).clicked() {
        match crate::platform::standard_access() {

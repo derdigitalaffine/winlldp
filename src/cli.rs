@@ -1,6 +1,6 @@
 //! Console interface, sharing the exact same parser/capture/export implementation as the GUI.
 use crate::{
-    capture::{self, Engine, Notice},
+    capture::{self, CaptureBackend, Engine, Notice},
     model::Monitor,
     protocol::{self, TxProfile},
 };
@@ -12,12 +12,14 @@ use std::{
     },
     time::{Duration, Instant},
 };
-const HELP: &str = r#"WinLLDP 1.0.2 — command line
+const HELP: &str = r#"WinLLDP 1.1.0 — command line
 
 WinLLDP.exe --cli [options]
   --help                    Show this help
   --list-adapters           Print adapters as JSON (no Npcap required)
-  --doctor                  Check Npcap DLL, capture devices and policy (JSON)
+  --doctor                  Check Windows Packet Monitor, Npcap and adapters (JSON)
+  --backend auto|windows|npcap
+                            Receive backend, default auto (native first)
   --adapter NAME-OR-ID      Select adapter by exact name/ID; repeat for receive
   --duration SECONDS        Live capture duration, default 30; 0 until Ctrl+C
   --read FILE.pcap          Read an offline Ethernet PCAP instead of live capture
@@ -26,8 +28,9 @@ WinLLDP.exe --cli [options]
   --send PROFILE.json      Explicitly advertise on ONE selected adapter
   --write-profile FILE     Write editable defaults for ONE selected adapter
 
-No sending is enabled by default. Npcap is required for live Ethernet access;
-standard-user access depends on its driver permissions. Ctrl+C stops capture
+No sending is enabled by default. Windows Packet Monitor receives LLDP
+without Npcap (administrator required). Npcap is optional for receiving
+and required for LLDP advertisement; its permissions govern standard access. Ctrl+C stops capture
 and attempts an LLDP shutdown when advertising. Offline files are snapshots.
 GUI-subsystem EXE: in cmd.exe use start /wait "" WinLLDP.exe --cli ...
 Exit codes: 0 success; 2 invalid arguments, I/O or capture error.
@@ -37,6 +40,7 @@ struct Options {
     help: bool,
     list: bool,
     doctor: bool,
+    backend: CaptureBackend,
     adapters: Vec<String>,
     duration: u64,
     read: Option<String>,
@@ -58,6 +62,14 @@ fn options(args: &[String]) -> Result<Options, String> {
             "--help" | "-h" => o.help = true,
             "--list-adapters" => o.list = true,
             "--doctor" => o.doctor = true,
+            "--backend" => {
+                o.backend = match a.next().map(String::as_str) {
+                    Some("auto") => CaptureBackend::Auto,
+                    Some("windows") => CaptureBackend::Windows,
+                    Some("npcap") => CaptureBackend::Npcap,
+                    _ => return Err("--backend must be auto, windows or npcap".into()),
+                };
+            },
             "--adapter" => o
                 .adapters
                 .push(a.next().ok_or("--adapter requires a value")?.clone()),
@@ -88,6 +100,9 @@ fn options(args: &[String]) -> Result<Options, String> {
     }
     if o.format == "pcap" && o.output.is_none() {
         return Err("PCAP requires --output FILE".into());
+    }
+    if o.send.is_some() && o.backend == CaptureBackend::Windows {
+        return Err("LLDP advertising requires Npcap; use --backend npcap or auto".into());
     }
     if o.read.is_some() && o.send.is_some() {
         return Err("--read cannot be combined with --send".into());
@@ -122,6 +137,8 @@ fn execute(args: &[String]) -> Result<(), String> {
     if o.doctor {
         let report = serde_json::json!({
             "npcap": capture::inspect_npcap(),
+            "windows_packet_monitor": capture::inspect_packet_monitor(),
+            "selected_default_backend": "auto",
             "adapters": capture::adapters(),
             "note": "Npcap is a separately installed driver; successful probing does not prove that a remote switch is advertising LLDP."
         });
@@ -198,7 +215,12 @@ fn execute(args: &[String]) -> Result<(), String> {
         ctrlc::set_handler(move || flag.store(true, Ordering::SeqCst))
             .map_err(|e| e.to_string())?;
         let mut engine = Engine::default();
-        engine.start(&adapters)?;
+        let backend = if o.send.is_some() && o.backend == CaptureBackend::Auto {
+            CaptureBackend::Npcap
+        } else {
+            o.backend
+        };
+        engine.start_with(&adapters, backend)?;
         let started = Instant::now();
         let mut had_ready = false;
         let mut active = std::collections::BTreeSet::new();
@@ -231,7 +253,13 @@ fn execute(args: &[String]) -> Result<(), String> {
                         eprintln!("{id}: advertising={v}");
                     }
                     Notice::LocalFrame(_) => {
-                        // A local advertising echo is not a remote neighbor.
+                        // Local advertising echoes are not remote neighbors.
+                    }
+                    Notice::Backend(id, selected) => {
+                        eprintln!("{id}: backend={selected}");
+                    }
+                    Notice::Diagnostic(id, detail) => {
+                        eprintln!("{id}: {detail}");
                     }
                 }
             }
@@ -268,6 +296,10 @@ mod tests {
         assert!(options(&a("--cli --format pcap")).is_err());
         assert!(options(&a("--cli --read a --send b")).is_err());
         assert!(options(&a("--cli --unknown")).is_err());
+        assert!(options(&a("--backend anything")).is_err());
+        assert!(options(&a("--backend windows --send p.json")).is_err());
+        assert_eq!(options(&a("--backend windows")).unwrap().backend, CaptureBackend::Windows);
+        assert_eq!(options(&a("--backend npcap")).unwrap().backend, CaptureBackend::Npcap);
         assert_eq!(
             options(&a("--cli --duration 5 --format csv"))
                 .unwrap()

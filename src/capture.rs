@@ -50,6 +50,24 @@ pub fn adapters() -> Result<Vec<Adapter>, String> {
         Ok(vec![])
     }
 }
+/// Receive backend. Auto prefers Windows Packet Monitor and falls back to Npcap.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CaptureBackend {
+    #[default]
+    Auto,
+    Windows,
+    Npcap,
+}
+impl CaptureBackend {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Automatic (Windows first, Npcap fallback)",
+            Self::Windows => "Windows Packet Monitor",
+            Self::Npcap => "Npcap",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Notice {
     Frame(Packet),
@@ -57,6 +75,8 @@ pub enum Notice {
     Error(String, String),
     Tx(String, bool),
     LocalFrame(String),
+    Backend(String, String),
+    Diagnostic(String, String),
 }
 #[derive(Clone)]
 enum Command {
@@ -75,11 +95,20 @@ pub struct Engine {
 }
 impl Engine {
     pub fn start(&mut self, devices: &[Adapter]) -> Result<(), String> {
+        self.start_with(devices, CaptureBackend::Auto)
+    }
+    pub fn start_with(&mut self, devices: &[Adapter], backend: CaptureBackend) -> Result<(), String> {
         self.stop();
         if devices.is_empty() {
             return Err("No adapter selected".into());
         }
-        let api = Arc::new(Api::load()?);
+        // Only explicit Npcap requires loading a third-party DLL at startup.
+        // Native receive is usable with no Npcap installed.
+        let api = if backend == CaptureBackend::Npcap {
+            Some(Arc::new(Api::load()?))
+        } else {
+            None
+        };
         let (tx, rx) = mpsc::sync_channel(512);
         self.rx = Some(rx);
         for adapter in devices {
@@ -88,7 +117,14 @@ impl Engine {
             let tx = tx.clone();
             let (ctx, crx) = mpsc::channel();
             let id = adapter.id.clone();
-            let join = thread::spawn(move || run(api, adapter, crx, tx));
+            let join = thread::spawn(move || {
+                if let Some(api) = api {
+                    notice(&tx, Notice::Backend(adapter.id.clone(), "Npcap".into()));
+                    run(api, adapter, crx, tx);
+                } else {
+                    run_auto(adapter, backend, crx, tx);
+                }
+            });
             self.workers.push(Worker {
                 id,
                 command: ctx,
@@ -293,6 +329,160 @@ impl Api {
 fn notice(tx: &SyncSender<Notice>, n: Notice) {
     let _ = tx.try_send(n);
 }
+
+/// Report Packet Monitor availability separately from Npcap. The actual live
+/// open still performs privilege and adapter-mapping checks.
+pub fn inspect_packet_monitor() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let capabilities = winptap::capabilities(winptap::Backend::Auto)
+            .map_err(|e| e.to_string())?;
+        let devices = winptap::CaptureDevice::list().map_err(|e| e.to_string())?;
+        let names = devices.iter().filter(|d| d.network_interface)
+            .map(|d| format!("{}: {}", d.id, d.description)).collect::<Vec<_>>();
+        Ok(format!("{:?}; {} NIC components: {}", capabilities.backend,
+            names.len(), names.join(" | ")))
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Windows Packet Monitor is only available on Windows".into())
+    }
+}
+
+/// Auto never requires Npcap, and only falls back when the selected native
+/// capture really fails. Explicit native mode never silently selects Npcap.
+fn run_auto(a: Adapter, backend: CaptureBackend, rx: Receiver<Command>, tx: SyncSender<Notice>) {
+    let native_error: String;
+    #[cfg(windows)]
+    {
+        match run_windows(&a, &rx, &tx) {
+            Ok(()) => return,
+            Err(e) => native_error = e,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        native_error = "Windows Packet Monitor is not available on this OS".into();
+    }
+    if backend == CaptureBackend::Windows {
+        notice(&tx, Notice::Error(a.id, format!("Windows Packet Monitor: {native_error}")));
+        return;
+    }
+    notice(&tx, Notice::Diagnostic(a.id.clone(),
+        format!("Windows Packet Monitor unavailable ({native_error}); trying Npcap")));
+    match Api::load() {
+        Ok(api) => {
+            notice(&tx, Notice::Backend(a.id.clone(), "Npcap fallback".into()));
+            run(Arc::new(api), a, rx, tx);
+        }
+        Err(npcap) => {
+            notice(&tx, Notice::Error(a.id,
+                format!("Windows Packet Monitor: {native_error}; Npcap: {npcap}. Run elevated for native receive or install Npcap.")));
+        }
+    }
+}
+
+#[cfg(windows)]
+fn adapter_identity(a: &Adapter) -> winptap::InterfaceIdentity<'_> {
+    winptap::InterfaceIdentity {
+        // The OS adapter ID is a GUID wrapped in the historical Npcap prefix.
+        name: a.id.strip_prefix("\\Device\\NPF_").unwrap_or(&a.id),
+        description: Some(&a.description),
+        mac_address: Some(a.mac),
+    }
+}
+
+#[cfg(windows)]
+fn is_remote_lldp_frame(
+    bytes: &[u8],
+    local_mac: [u8; 6],
+    link_type: winptap::LinkType,
+    direction: winptap::Direction,
+) -> bool {
+    link_type == winptap::LinkType::Ethernet
+        && direction != winptap::Direction::Transmit
+        && !is_local_source(bytes, local_mac)
+        && protocol::parse(bytes).is_ok()
+}
+
+#[cfg(windows)]
+fn run_windows(
+    a: &Adapter,
+    rx: &Receiver<Command>,
+    tx: &SyncSender<Notice>,
+) -> Result<(), String> {
+    use winptap::{
+        CaptureConfig, CaptureDevice, Error as WinError, Filter,
+        LinkType, PacketReceiver,
+    };
+    // OS interface IDs are NPF-prefixed GUIDs for historical Npcap use.
+    // Never guess a pktmon component from an enumeration index.
+    let all = adapters()?;
+    let interfaces: Vec<_> = all.iter().map(adapter_identity).collect();
+    let capture_devices = CaptureDevice::list().map_err(|e| e.to_string())?;
+    let capture_device = CaptureDevice::for_interface(
+        adapter_identity(a), &interfaces, &capture_devices,
+    ).map_err(|e| format!("adapter mapping: {e}"))?;
+
+    // Driver and application filters both restrict capture to LLDP EtherType.
+    // The library understands one or more 802.1Q VLAN tags.
+    let lldp = Filter { ether_type: Some(0x88cc), ..Default::default() };
+    let config = CaptureConfig::builder()
+        .device(capture_device.clone())
+        .link_type(LinkType::Ethernet)
+        .snaplen(2048)
+        .queue_capacity(256)
+        .capture_filter(lldp)
+        .build().map_err(|e| e.to_string())?;
+    let mut receiver = PacketReceiver::open(config).map_err(|e| e.to_string())?;
+    notice(tx, Notice::Backend(a.id.clone(), format!(
+        "Windows Packet Monitor ({:?})", capture_device.backend,
+    )));
+    notice(tx, Notice::Status(a.id.clone(), "capture_started".into()));
+    let result = (|| -> Result<(), String> {
+        'receive: loop {
+            for command in rx.try_iter() {
+                match command {
+                    Command::Stop => break 'receive,
+                    Command::Advertise(Some(_)) => notice(tx, Notice::Error(
+                        a.id.clone(),
+                        "Windows Packet Monitor cannot inject LLDP. Select Npcap to advertise.".into(),
+                    )),
+                    Command::Advertise(None) => notice(tx, Notice::Tx(a.id.clone(), false)),
+                }
+            }
+            for _ in 0..64 {
+                let frame = match receiver.try_next_packet() {
+                    Ok(Some(p)) => p,
+                    Ok(None) => return Err("Packet Monitor stream closed".into()),
+                    Err(WinError::Timeout) => break,
+                    Err(e) => return Err(e.to_string()),
+                };
+                let bytes = frame.data();
+                if is_local_source(bytes, a.mac) {
+                    notice(tx, Notice::LocalFrame(a.id.clone()));
+                    continue;
+                }
+                if !is_remote_lldp_frame(
+                    bytes, a.mac, frame.metadata().link_type, frame.metadata().direction
+                ) {
+                    continue;
+                }
+                notice(tx, Notice::Frame(Packet {
+                    at: Utc::now(),
+                    adapter: a.id.clone(),
+                    bytes: bytes.to_vec(),
+                }));
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        Ok(())
+    })();
+    let stopped = receiver.stop().map_err(|e| e.to_string());
+    notice(tx, Notice::Status(a.id.clone(), "capture_stopped".into()));
+    result.and(stopped)
+}
+
 fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>) {
     unsafe {
         let device = match CString::new(a.id.as_str()) {
@@ -460,5 +650,28 @@ mod own_frame_tests {
         assert!(!is_local_source(&frame, mac));
         assert!(!is_local_source(&frame[..10], mac));
         assert!(!is_local_source(&frame, [0; 6]));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod native_packet_tests {
+    use super::*;
+    use winptap::{Direction, LinkType};
+
+    #[test]
+    fn native_receive_requires_incoming_ethernet_lldp_from_other_mac() {
+        let self_mac = [2, 1, 1, 1, 1, 1];
+        let switch_mac = [2, 10, 20, 30, 40, 50];
+        let profile = TxProfile {
+            chassis_value: "02:0A:14:1E:28:32".into(),
+            port_value: "Ethernet1/1".into(),
+            ..Default::default()
+        };
+        let frame = protocol::encode(&profile, switch_mac, false).unwrap();
+        assert!(is_remote_lldp_frame(&frame, self_mac, LinkType::Ethernet, Direction::Receive));
+        assert!(!is_remote_lldp_frame(&frame, switch_mac, LinkType::Ethernet, Direction::Receive));
+        assert!(!is_remote_lldp_frame(&frame, self_mac, LinkType::Ethernet, Direction::Transmit));
+        assert!(!is_remote_lldp_frame(&frame, self_mac, LinkType::RawIp, Direction::Receive));
+        assert!(!is_remote_lldp_frame(&frame[..12], self_mac, LinkType::Ethernet, Direction::Receive));
     }
 }
