@@ -1,10 +1,10 @@
-WinLLDP 1.0.1 (Windows 10/11 x64)
-Source commit: f0dfab944c661eb9b550afdafffa1fb68476152f
+WinLLDP 1.0.2 (Windows 10/11 x64)
+Source commit: ac80935da83f9a69ac7653fd4abcd9546219a6e0
 Rust: rustc 1.99.1 (58cf8f9c3 2026-10-13)
 Rust target: x86_64-pc-windows-msvc
 Build: cargo build --locked --release --target x86_64-pc-windows-msvc --bins
 Tests: cargo test --locked --target x86_64-pc-windows-msvc
-Smoke: WinLLDP.exe --self-test --report FILE, and winlldp-cli.exe --help (passed)
+Smoke: WinLLDP.exe --self-test --report FILE, winlldp-cli.exe --help and --doctor (passed)
 Installer: Inno Setup 6, per-user installation, includes uninstall entry
 Release binaries: unsigned; verify SHA256SUMS.txt before use
 Npcap: external optional driver, NOT bundled; required for live LLDP access
