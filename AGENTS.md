@@ -15,7 +15,7 @@ Halloween-, Django-, PostgreSQL- und Veranstaltungsanforderungen gelten hier nic
 4. Zugehörige Issues und zentrales Tracking-Issue, sobald vorhanden
 
 Das Repository ist die gemeinsame fachliche Grundlage. Konflikte zwischen Issues, Dokumentation und Implementierung untersuchen und Entscheidungen dokumentieren.
-Aktuell läuft ausdrücklich ein Anforderungsinterview: offene produktprägende Entscheidungen mit dem Nutzer klären. Unbestätigte Vorschläge nicht als beschlossene Anforderungen darstellen.
+Das Interview ist abgeschlossen. Der Nutzer hat autonome Fertigstellung und vier nach main zu mergende PRs beauftragt. Offene Details robust selbst entscheiden und dokumentieren.
 
 ## Arbeitsorganisation
 - Produkt und Anforderungen: Interviewergebnisse, offene Fragen, Prioritäten und Akzeptanzkriterien pflegen.
@@ -32,7 +32,7 @@ Diese Verantwortlichkeiten sind keine Behauptung, dass mehrere Agenten gestartet
 - Portable EXE und Installationspaket als vereinbarte Lieferformate.
 - Windows 10 und Windows 11 unterstützen; CPU-Architekturen noch klären.
 - Betrieb ohne Administratorrechte sowie mit Administratorrechten/Npcap komfortabel über die UI umschaltbar machen. Fähigkeiten und Voraussetzungen beider Modi technisch nachweisen und transparent darstellen.
-- Sprache, Framework und konkrete Capture-/Treiberstrategie sind noch zu klären.
+- Rust/egui, Windows x64, Npcap dynamisch; Deutsch/Englisch/Niederländisch.
 - Keine Architektur oder Treiberfreiheit aus dem Namen „portable“ ableiten.
 - Netzwerkwerbung nur bewusst aktivieren; Zustand und betroffene Adapter sichtbar anzeigen.
 
@@ -50,7 +50,7 @@ Diese Verantwortlichkeiten sind keine Behauptung, dass mehrere Agenten gestartet
 - Klar lesbare Adapter-, Nachbar-, Switch- und Portinformationen; alle empfangenen LLDP-Daten müssen zugänglich sein, einschließlich nicht interpretierter Erweiterungen.
 - Lade-, Empfangs-, Sende-, Leer- und Fehlerzustände verständlich unterscheiden.
 - Wichtige Informationen nicht ausschließlich durch Farbe vermitteln.
-- Weitere visuelle Entscheidungen im Interview klären.
+- Systemabhängiges helles/dunkles Design, manuell überschreibbar.
 
 ## Tests
 Jede Funktion benötigt die kleinsten sinnvollen Prüfungen ihrer Akzeptanzkriterien.
