@@ -425,10 +425,10 @@ impl App {
             .corner_radius(12)
     }
     fn title(ui: &mut egui::Ui, title: &str, description: &str) {
-        ui.label(RichText::new(title).size(27.).strong());
+        ui.label(RichText::new(title).size(21.).strong());
         ui.add_space(2.);
         ui.label(RichText::new(description).size(14.).weak());
-        ui.add_space(16.);
+        ui.add_space(10.);
     }
     fn card(ui: &mut egui::Ui, label: &str, value: &str) {
         Self::surface(ui)
@@ -441,58 +441,49 @@ impl App {
     }
     fn overview(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
-        Self::title(
-            ui,
-            l.t(
-                "Dein Anschluss. Alle Details.",
-                "Your connection. Every detail.",
-                "Je verbinding. Alle details.",
-            ),
-            l.t(
-                "LLDP-Nachbarn in Echtzeit entdecken und verstehen.",
-                "Discover and inspect LLDP neighbors in real time.",
-                "Ontdek en bekijk LLDP-buren in realtime.",
-            ),
-        );
-        ui.columns(3, |c| {
-            Self::card(
-                &mut c[0],
-                l.t("NACHBARN", "NEIGHBORS", "BUREN"),
-                &self.monitor.neighbors.len().to_string(),
-            );
-            Self::card(
-                &mut c[1],
-                l.t("AKTIVE ADAPTER", "ACTIVE ADAPTERS", "ACTIEVE ADAPTERS"),
-                &self.ready.len().to_string(),
-            );
-            Self::card(
-                &mut c[2],
-                l.t("LLDP-PAKETE", "LLDP PACKETS", "LLDP-PAKKETTEN"),
-                &self.monitor.received.to_string(),
-            );
-        });
-        ui.add_space(16.);
+        Self::title(ui,
+            l.t("LLDP-Nachbarn", "LLDP neighbors", "LLDP-buren"),
+            l.t("Kompakte Tabelle · Doppelklick öffnet alle Details.",
+                "Compact table · double-click a row for full details.",
+                "Compacte tabel · dubbelklik voor alle details."));
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(l.t("Suche", "Search", "Zoeken")).strong());
-            ui.add(
-                egui::TextEdit::singleline(&mut self.query)
-                    .hint_text(l.t(
-                        "Switch, Port, Adapter oder Chassis …",
-                        "Switch, port, adapter or chassis …",
-                        "Switch, poort, adapter of chassis …",
-                    ))
-                    .desired_width(300.),
-            );
+            ui.label(RichText::new(format!(
+                "{} {} · {} {} · {} {}",
+                self.monitor.neighbors.len(), l.t("Nachbarn", "neighbors", "buren"),
+                self.monitor.received, l.t("Pakete", "packets", "pakketten"),
+                self.own_frames, l.t("lokale Frames ausgeblendet",
+                    "local echoes hidden", "lokale frames verborgen")
+            )).small().weak());
+            if self.npcap.is_err() || !self.capture_errors.is_empty() {
+                ui.colored_label(Color32::from_rgb(216, 139, 67), l.t(
+                    "Npcap/Empfang prüfen", "Check Npcap/capture", "Controleer Npcap/ontvangst"));
+                if ui.small_button(l.t("Diagnose / Installation",
+                    "Diagnostics / install", "Diagnose / installatie")).clicked() {
+                    self.page = 1;
+                }
+            } else if self.ready.is_empty() {
+                ui.label(RichText::new(l.t("Empfang nicht aktiv",
+                    "Capture inactive", "Ontvangst niet actief")).small().weak());
+                if ui.small_button(l.t("Adapter prüfen", "Check adapters", "Adapters controleren")).clicked() {
+                    self.page = 1;
+                }
+            }
+        });
+        ui.add_space(8.);
+        ui.horizontal_wrapped(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.query)
+                .hint_text(l.t("Switch / Port / Adapter / MAC suchen …",
+                    "Search switch / port / adapter / MAC …",
+                    "Zoek switch / poort / adapter / MAC …"))
+                .desired_width(250.));
             if !self.query.is_empty()
-                && ui.small_button(l.t("Zurücksetzen", "Clear", "Wissen")).clicked()
-            {
+                && ui.small_button(l.t("Leeren", "Clear", "Wissen")).clicked() {
                 self.query.clear();
             }
-            ui.separator();
-            if ui.button(l.t("PCAP öffnen", "Open PCAP", "PCAP openen")).clicked() {
+            if ui.small_button(l.t("PCAP öffnen", "Open PCAP", "PCAP openen")).clicked() {
                 self.import();
             }
-            ui.menu_button(l.t("Exportieren", "Export", "Exporteren"), |ui| {
+            ui.menu_button(l.t("Export", "Export", "Exporteren"), |ui| {
                 for kind in ["CSV", "JSON", "PCAP"] {
                     if ui.button(kind).clicked() {
                         self.export(kind);
@@ -501,156 +492,93 @@ impl App {
                 }
             });
         });
-        ui.add_space(12.);
-
-        if self.monitor.neighbors.is_empty() {
-            Self::surface(ui).inner_margin(24.).show(ui, |ui| {
-                ui.label(RichText::new(l.t(
-                    "Noch kein Nachbar entdeckt",
-                    "No neighbors discovered yet",
-                    "Nog geen buren ontdekt",
-                )).size(19.).strong());
-                ui.label(l.t(
-                    "Ein LLDP-fähiger Switch muss Ankündigungen senden. Prüfe Kabel, Adapterauswahl und Npcap. Die erste Ankündigung kann einige Sekunden dauern.",
-                    "A switch must advertise LLDP. Check cable, adapter selection and Npcap. The first advertisement can take a few seconds.",
-                    "Een switch moet LLDP-advertenties sturen. Controleer kabel, adapterselectie en Npcap. De eerste advertentie kan even duren.",
-                ));
-                ui.hyperlink_to(
-                    l.t("Npcap herunterladen", "Download Npcap", "Npcap downloaden"),
-                    "https://npcap.com/#download",
-                );
-            });
-            return;
-        }
-
-        // Preserve the selected neighbor by its source index. Search never changes
-        // the underlying data or the export set.
+        ui.add_space(7.);
         let query = self.query.trim().to_lowercase();
-        let rows: Vec<(usize, String, String, String, String, String)> = self.monitor
-            .neighbors
-            .iter()
-            .enumerate()
-            .filter_map(|(i, n)| {
-                let a = &n.advertisement;
+        let rows: Vec<(usize, String, String, String, String, String)> = self.monitor.neighbors
+            .iter().enumerate().filter_map(|(index, neighbor)| {
+                let a = &neighbor.advertisement;
                 let switch = if a.system_name.is_empty() {
                     a.chassis_id.clone()
                 } else {
                     a.system_name.clone()
                 };
-                let adapter = self.name(&n.adapter);
-                let search_text = format!(
-                    "{} {} {} {} {} {}",
-                    switch, a.port_id, a.port_description, a.chassis_id, a.source_mac, adapter
-                ).to_lowercase();
-                if !query.is_empty() && !search_text.contains(&query) {
-                    return None;
-                }
-                Some((
-                    i,
-                    switch,
-                    a.port_id.clone(),
-                    adapter,
+                let adapter = self.name(&neighbor.adapter);
+                let searchable = format!("{} {} {} {} {} {}",
+                    switch, a.port_id, a.port_description, a.chassis_id,
+                    a.source_mac, adapter).to_lowercase();
+                if !query.is_empty() && !searchable.contains(&query) { return None; }
+                Some((index, switch, a.port_id.clone(), adapter,
                     format!("{} s", a.ttl),
-                    n.last_seen.format("%d.%m. %H:%M:%S").to_string(),
-                ))
-            })
-            .collect();
-
-        ui.horizontal(|ui| {
-            ui.label(RichText::new(l.t("NACHBAR-TABELLE", "NEIGHBOR TABLE", "BURENTABEL")).strong());
-            ui.separator();
-            ui.label(RichText::new(format!(
-                "{} / {}",
-                rows.len(),
-                self.monitor.neighbors.len()
-            )).small().weak());
-            ui.label(RichText::new(l.t(
-                "Eintrag auswählen, um alle TLVs zu sehen",
-                "Select a row to inspect all TLVs",
-                "Selecteer een rij om alle TLV's te bekijken",
-            )).small().weak());
-        });
-        ui.add_space(5.);
+                    neighbor.last_seen.format("%d.%m. %H:%M:%S").to_string()))
+            }).collect();
+        ui.label(RichText::new(format!(
+            "{} {} · {}",
+            rows.len(),
+            l.t("Treffer", "matches", "resultaten"),
+            l.t("Doppelklick: Details", "Double-click: details", "Dubbelklik: details")
+        )).small().weak());
         if rows.is_empty() {
-            Self::surface(ui).show(ui, |ui| {
-                ui.label(l.t(
-                    "Keine passenden Nachbarn. Suche ändern oder zurücksetzen.",
-                    "No matching neighbors. Change or clear the search.",
-                    "Geen overeenkomende buren. Pas de zoekopdracht aan of wis deze.",
-                ));
-            });
+            ui.add_space(12.);
+            ui.label(l.t("Keine passenden LLDP-Nachbarn. Adapter und Npcap unter „Adapter“ prüfen.",
+                "No matching LLDP neighbors. Check adapters and Npcap in Adapters.",
+                "Geen LLDP-buren gevonden. Controleer adapters en Npcap bij Adapters."));
+            if self.npcap.is_err() && ui.button(l.t("Npcap installieren …",
+                "Install Npcap …", "Npcap installeren …")).clicked() {
+                self.page = 1;
+            }
             return;
         }
         if !rows.iter().any(|row| row.0 == self.selected) {
             self.selected = rows[0].0;
         }
-
-        Self::surface(ui).inner_margin(10.).show(ui, |ui| {
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(10., 4.);
-                ui.spacing_mut().interact_size.y = 25.;
-                egui::ScrollArea::both()
-                    .id_salt("neighbors-compact-table")
-                    .max_height(260.)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        egui::Grid::new("neighbors-compact-grid")
-                            .num_columns(5)
-                            .striped(true)
-                            .spacing([14., 4.])
-                            .show(ui, |ui| {
-                                for label in [
-                                    l.t("Switch", "Switch", "Switch"),
-                                    l.t("Port", "Port", "Poort"),
-                                    l.t("Adapter", "Adapter", "Adapter"),
-                                    l.t("TTL", "TTL", "TTL"),
-                                    l.t("Gesehen (UTC)", "Seen (UTC)", "Gezien (UTC)"),
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(7., 3.);
+            ui.spacing_mut().interact_size.y = 23.;
+            egui::ScrollArea::both().id_salt("neighbors-table")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    egui::Grid::new("neighbors-grid")
+                        .num_columns(5)
+                        .striped(true)
+                        .spacing([13., 3.])
+                        .show(ui, |ui| {
+                            for header in [
+                                l.t("Switch", "Switch", "Switch"),
+                                l.t("Port", "Port", "Poort"),
+                                l.t("Adapter", "Adapter", "Adapter"),
+                                "TTL",
+                                l.t("Zuletzt (UTC)", "Last seen (UTC)", "Laatst (UTC)")
+                            ] {
+                                ui.label(RichText::new(header).small().strong().weak());
+                            }
+                            ui.end_row();
+                            for (index, switch, port, adapter, ttl, seen) in &rows {
+                                let selected = *index == self.selected;
+                                for (value, hover) in [
+                                    (switch.as_str(), switch.as_str()),
+                                    (port.as_str(), port.as_str()),
+                                    (adapter.as_str(), adapter.as_str()),
+                                    (ttl.as_str(), ttl.as_str()),
+                                    (seen.as_str(), seen.as_str()),
                                 ] {
-                                    ui.label(RichText::new(label).small().strong().weak());
+                                    let response = ui.selectable_label(selected, value).on_hover_text(hover);
+                                    if response.clicked() { self.selected = *index; }
+                                    if response.double_clicked()
+                                        || (response.has_focus()
+                                            && ui.input(|input| input.key_pressed(egui::Key::Enter))) {
+                                        self.selected = *index;
+                                        self.detail_open = true;
+                                    }
                                 }
                                 ui.end_row();
-                                for (i, switch, port, adapter, ttl, seen) in &rows {
-                                    let selected = *i == self.selected;
-                                    if ui.selectable_label(selected, RichText::new(switch).strong())
-                                        .on_hover_text(switch).clicked()
-                                    {
-                                        self.selected = *i;
-                                    }
-                                    if ui.selectable_label(selected, RichText::new(port).monospace())
-                                        .on_hover_text(port).clicked()
-                                    {
-                                        self.selected = *i;
-                                    }
-                                    if ui.selectable_label(selected, adapter)
-                                        .on_hover_text(adapter).clicked()
-                                    {
-                                        self.selected = *i;
-                                    }
-                                    if ui.selectable_label(selected, ttl).clicked() {
-                                        self.selected = *i;
-                                    }
-                                    if ui.selectable_label(selected, RichText::new(seen).small())
-                                        .clicked()
-                                    {
-                                        self.selected = *i;
-                                    }
-                                    ui.end_row();
-                                }
-                            });
-                    });
-            });
+                            }
+                        });
+                });
         });
+    }
 
-        ui.add_space(14.);
-        ui.label(RichText::new(l.t(
-            "AUSGEWÄHLTER NACHBAR · DETAILS",
-            "SELECTED NEIGHBOR · DETAILS",
-            "GESELECTEERDE BUUR · DETAILS",
-        )).small().strong().weak());
-        ui.add_space(5.);
-        egui::ScrollArea::vertical()
-            .id_salt("details")
-            .show(ui, |ui| {
+    fn neighbor_details(&self, ui: &mut egui::Ui) {
+        let l = self.settings.language;
                     let n = &self.monitor.neighbors[self.selected];
                     let a = &n.advertisement;
                     Self::surface(ui)
@@ -772,7 +700,6 @@ impl App {
                         });
                     }
 
-            });
     }
     /// Drive the Npcap installation flow from the application, without
     /// redistributing a third-party installer or silently bypassing Windows UAC.
