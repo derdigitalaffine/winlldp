@@ -56,6 +56,7 @@ pub enum Notice {
     Status(String, String),
     Error(String, String),
     Tx(String, bool),
+    LocalFrame(String),
 }
 #[derive(Clone)]
 enum Command {
@@ -133,6 +134,10 @@ impl Drop for Engine {
         self.stop();
     }
 }
+pub fn is_local_source(frame: &[u8], mac: [u8; 6]) -> bool {
+    mac != [0; 6] && frame.get(6..12) == Some(mac.as_slice())
+}
+
 #[repr(C)]
 struct Header {
     sec: i32,
@@ -334,6 +339,10 @@ fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>)
                             let bytes =
                                 std::slice::from_raw_parts(bytes, head.caplen as usize).to_vec();
                             if protocol::parse(&bytes).is_ok() {
+                                if is_local_source(&bytes, a.mac) {
+                                    notice(&tx, Notice::LocalFrame(a.id.clone()));
+                                    continue;
+                                }
                                 notice(
                                     &tx,
                                     Notice::Frame(Packet {
@@ -361,5 +370,21 @@ fn run(api: Arc<Api>, a: Adapter, rx: Receiver<Command>, tx: SyncSender<Notice>)
         }
         notice(&tx, Notice::Tx(a.id.clone(), false));
         notice(&tx, Notice::Status(a.id, "capture_stopped".into()));
+    }
+}
+
+#[cfg(test)]
+mod own_frame_tests {
+    use super::*;
+    #[test]
+    fn never_treats_remote_or_truncated_frames_as_local() {
+        let mac = [0, 17, 34, 51, 68, 85];
+        let mut frame = vec![0u8; 60];
+        frame[6..12].copy_from_slice(&mac);
+        assert!(is_local_source(&frame, mac));
+        frame[6] = 7;
+        assert!(!is_local_source(&frame, mac));
+        assert!(!is_local_source(&frame[..10], mac));
+        assert!(!is_local_source(&frame, [0; 6]));
     }
 }
