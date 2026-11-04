@@ -17,6 +17,7 @@ const HELP: &str = r#"WinLLDP 1.0 — command line
 WinLLDP.exe --cli [options]
   --help                    Show this help
   --list-adapters           Print adapters as JSON (no Npcap required)
+  --doctor                  Check Npcap DLL, capture devices and policy (JSON)
   --adapter NAME-OR-ID      Select adapter by exact name/ID; repeat for receive
   --duration SECONDS        Live capture duration, default 30; 0 until Ctrl+C
   --read FILE.pcap          Read an offline Ethernet PCAP instead of live capture
@@ -35,6 +36,7 @@ Exit codes: 0 success; 2 invalid arguments, I/O or capture error.
 struct Options {
     help: bool,
     list: bool,
+    doctor: bool,
     adapters: Vec<String>,
     duration: u64,
     read: Option<String>,
@@ -55,6 +57,7 @@ fn options(args: &[String]) -> Result<Options, String> {
             "--cli" => {}
             "--help" | "-h" => o.help = true,
             "--list-adapters" => o.list = true,
+            "--doctor" => o.doctor = true,
             "--adapter" => o
                 .adapters
                 .push(a.next().ok_or("--adapter requires a value")?.clone()),
@@ -115,6 +118,15 @@ fn execute(args: &[String]) -> Result<(), String> {
     if o.help {
         print!("{HELP}");
         return Ok(());
+    }
+    if o.doctor {
+        let report = serde_json::json!({
+            "npcap": capture::inspect_npcap(),
+            "adapters": capture::adapters(),
+            "note": "Npcap is a separately installed driver; successful probing does not prove that a remote switch is advertising LLDP."
+        });
+        return output(&serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+            o.output.as_ref());
     }
     if o.list {
         return output(
@@ -217,6 +229,9 @@ fn execute(args: &[String]) -> Result<(), String> {
                     }
                     Notice::Tx(id, v) => {
                         eprintln!("{id}: advertising={v}");
+                    }
+                    Notice::LocalFrame(_) => {
+                        // A local advertising echo is not a remote neighbor.
                     }
                 }
             }
