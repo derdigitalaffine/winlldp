@@ -69,11 +69,14 @@ impl App {
             Default::default(),
         );
         let adapters = capture::adapters().unwrap_or_default();
-        let chosen = adapters
-            .iter()
-            .filter(|a| a.up)
-            .map(|a| a.id.clone())
-            .collect();
+        let chosen: BTreeSet<String> = match settings.selected_adapters.as_ref() {
+            Some(saved) => adapters.iter()
+                .filter(|a| saved.contains(&a.id))
+                .map(|a| a.id.clone()).collect(),
+            None => adapters.iter()
+                .filter(|a| a.up)
+                .map(|a| a.id.clone()).collect(),
+        };
         let mut app = Self {
             settings,
             monitor,
@@ -269,6 +272,10 @@ impl App {
                 )
                 .into()
         });
+        if r.is_ok() {
+            self.selection_dirty = false;
+            self.settings.selected_adapters = Some(self.chosen.clone());
+        }
         self.notify(r);
     }
     fn stop(&mut self) {
@@ -306,6 +313,7 @@ impl App {
                 .profiles
                 .insert(a.id.clone(), self.profile.clone());
         }
+        self.settings.selected_adapters = Some(self.chosen.clone());
         if let Err(e) = settings::save_json("settings.json", &self.settings) {
             self.notify(Err(e));
         }
@@ -872,6 +880,7 @@ impl App {
                     if self.chosen.is_empty() {
                         self.stop();
                         self.selection_dirty = false;
+                        self.save();
                     } else {
                         self.start();
                     }
