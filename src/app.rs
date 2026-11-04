@@ -778,254 +778,216 @@ impl App {
     fn capture_backend_ui(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(l.t("Empfang über", "Receive via", "Ontvangst via")).strong());
-            let previous = self.settings.capture_backend;
+            ui.label(l.t("Empfangsweg", "Capture method", "Ontvangstmethode"));
+            let old = self.settings.capture_backend;
             egui::ComboBox::from_id_salt("capture-backend")
-                .selected_text(match previous {
+                .selected_text(match old {
                     CaptureBackend::Auto => l.t("Automatisch", "Automatic", "Automatisch"),
                     CaptureBackend::Windows => "Windows Packet Monitor",
                     CaptureBackend::Npcap => "Npcap",
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Auto,
-                        l.t("Automatisch (Windows → Npcap)",
-                            "Automatic (Windows → Npcap)",
-                            "Automatisch (Windows → Npcap)"));
-                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Windows,
-                        "Windows Packet Monitor (Admin)");
-                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Npcap,
-                        "Npcap");
+                    ui.selectable_value(&mut self.settings.capture_backend,
+                        CaptureBackend::Auto,
+                        l.t("Automatisch (Windows / Npcap)",
+                            "Automatic (Windows / Npcap)",
+                            "Automatisch (Windows / Npcap)"));
+                    ui.selectable_value(&mut self.settings.capture_backend,
+                        CaptureBackend::Windows, "Windows Packet Monitor");
+                    ui.selectable_value(&mut self.settings.capture_backend,
+                        CaptureBackend::Npcap, "Npcap");
                 });
-            if self.settings.capture_backend != previous {
-                self.start();
+            if old != self.settings.capture_backend {
+                if self.engine.running() {
+                    self.start();
+                }
                 self.save();
             }
-            if crate::platform::is_admin() {
+            if !crate::platform::is_admin() &&
+                self.settings.capture_backend != CaptureBackend::Npcap {
                 ui.label(RichText::new(l.t(
-                    "Administrator", "Administrator", "Beheerder"
+                    "Windows-Empfang: Adminrechte erforderlich",
+                    "Windows capture: admin rights required",
+                    "Windows-ontvangst: beheerder vereist"
                 )).small().weak());
-            } else {
-                ui.label(RichText::new(l.t(
-                    "Windows-Empfang benötigt Adminrechte",
-                    "Native Windows capture requires administrator rights",
-                    "Windows-ontvangst vereist beheerdersrechten"
-                )).small().weak());
-                if ui.small_button(l.t("Als Admin neu starten …",
-                    "Restart as admin …", "Herstart als beheerder …")).clicked() {
-                    match crate::platform::elevate() {
-                        Ok(()) => {
-                            self.exit = true;
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                        },
-                        Err(error) => self.notify(Err(error)),
-                    }
+                if ui.small_button(l.t(
+                    "Als Admin starten …", "Run as admin …", "Als beheerder starten …"
+                )).clicked() {
+                    self.restart_elevated(ui.ctx());
                 }
             }
         });
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(l.t(
-                "Ohne Zusatztreiber empfangen · zum Senden Npcap auswählen",
-                "Receive without an added driver · select Npcap to advertise",
-                "Ontvangen zonder extra stuurprogramma · kies Npcap om te verzenden"
-            )).small().weak());
-            if ui.small_button(l.t("Windows-Diagnose", "Windows diagnostics", "Windows-diagnose"))
-                .clicked() {
-                self.native_report = Some(capture::inspect_packet_monitor());
-            }
-        });
-        if let Some(report) = &self.native_report {
-            match report {
-                Ok(info) => {
-                    ui.label(RichText::new(format!("Windows Packet Monitor: {info}")).small().weak());
-                }
-                Err(problem) => {
-                    ui.colored_label(Color32::from_rgb(214, 151, 75),
-                        format!("Windows Packet Monitor: {problem}"));
-                }
-            }
-        }
     }
-    /// Drive the Npcap installation flow from the application, without
-    /// redistributing a third-party installer or silently bypassing Windows UAC.
     fn npcap_setup_ui(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
-        Self::surface(ui).inner_margin(12.).show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                let status = match &self.npcap {
-                    Ok(report) => format!("Npcap: {} · {} {}",
-                        report.version, report.devices.len(),
-                        l.t("Geräte", "devices", "apparaten")),
-                    Err(problem) => format!("Npcap: {}", problem),
-                };
-                ui.label(RichText::new(status).small());
-                if let Ok(report) = &self.npcap {
-                    if report.admin_only == Some(true) {
-                        ui.colored_label(Color32::from_rgb(214, 151, 75),
-                            l.t("Adminzugriff erforderlich", "Administrator required", "Beheerder vereist"));
-                    }
-                    if report.devices.is_empty() {
-                        ui.colored_label(Color32::from_rgb(214, 151, 75),
-                            l.t("Keine Capture-Geräte sichtbar", "No capture devices visible", "Geen captureapparaten zichtbaar"));
-                    }
+        let status = match &self.npcap {
+            Ok(report) => format!("{} · {} {}", report.version, report.devices.len(),
+                l.t("Geräte", "devices", "apparaten")),
+            Err(_) => l.t("Nicht installiert oder nicht verfügbar",
+                "Not installed or unavailable", "Niet geïnstalleerd of niet beschikbaar").into(),
+        };
+        ui.label(RichText::new(format!("Npcap: {status}")).small().weak());
+        ui.horizontal_wrapped(|ui| {
+            ui.hyperlink_to(l.t(
+                "Offizielle Downloadseite", "Official download", "Officiële download"
+            ), "https://npcap.com/#download");
+            if ui.small_button(l.t(
+                "Installer ausführen …", "Run installer …", "Installatie starten …"
+            )).clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Npcap installer", &["exe"]).pick_file() {
+                    self.stop();
+                    let result = crate::platform::launch_npcap_installer(&path)
+                        .map(|_| l.t(
+                            "Npcap-Setup gestartet. Danach Diagnose erneut prüfen.",
+                            "Npcap setup launched. Recheck diagnostics after installation.",
+                            "Npcap-installatie gestart. Controleer daarna de diagnose.",
+                        ).into());
+                    self.notify(result);
                 }
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.hyperlink_to(
-                    l.t("1. Npcap offiziell herunterladen", "1. Download official Npcap", "1. Npcap officieel downloaden"),
-                    "https://npcap.com/#download",
-                );
-                if ui.button(l.t(
-                    "2. Installer auswählen und starten …",
-                    "2. Select and run downloaded installer …",
-                    "2. Gedownloade installer kiezen en starten …",
-                )).clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Npcap installer", &["exe"])
-                        .pick_file()
-                    {
-                        // Release capture handles before a driver install or upgrade.
-                        self.stop();
-                        let result = crate::platform::launch_npcap_installer(&path)
-                            .map(|_| l.t(
-                                "Npcap-Setup gestartet. Nach Abschluss auf „Erneut prüfen“ klicken; UAC bestätigen.",
-                                "Npcap setup launched. Finish setup and click Recheck; approve UAC.",
-                                "Npcap-installatie gestart. Voltooi en klik Opnieuw controleren; bevestig UAC.",
-                            ).to_string());
-                        self.notify(result);
-                    }
-                }
-                if !crate::platform::is_admin() &&
-                    ui.button(l.t("Mit Administratorrechten neu starten …",
-                        "Restart as administrator …", "Herstart als beheerder …")).clicked() {
-                    match crate::platform::elevate() {
-                        Ok(()) => {
-                            self.exit = true;
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                        },
-                        Err(e) => self.notify(Err(e)),
-                    }
-                }
-                if ui.button(l.t("3. Erneut prüfen", "3. Recheck", "3. Opnieuw controleren")).clicked() {
-                    self.npcap = capture::inspect_npcap();
-                    match capture::adapters() {
-                        Ok(devices) => {
-                            self.adapters = devices;
-                            self.chosen.retain(|id| self.adapters.iter().any(|a| &a.id == id));
-                            self.send_index = 0;
-                            self.load_profile();
-                        },
-                        Err(e) => self.notify(Err(e)),
-                    }
-                }
-            });
-            ui.label(RichText::new(l.t(
-                "Npcap wird nicht mitgeliefert. Nur den signierten Installer von npcap.com verwenden, Windows-UAC bestätigen und die Lizenz beachten. Das Setup arbeitet interaktiv; danach Empfang neu starten. Bei Admin-only-Npcap zusätzlich WinLLDP mit Adminrechten neu starten.",
-                "Npcap is not bundled. Use only the signed installer from npcap.com, approve Windows UAC and review its license. Setup runs interactively; restart capture afterward. For admin-only Npcap, restart WinLLDP elevated.",
-                "Npcap is niet meegeleverd. Gebruik alleen de ondertekende installer van npcap.com, bevestig UAC en lees de licentie. Start na installatie de ontvangst opnieuw. Bij admin-only Npcap WinLLDP als beheerder herstarten.",
-            )).small().weak());
-        });
-        if !self.capture_errors.is_empty() {
-            ui.add_space(6.);
-            for (adapter, problem) in &self.capture_errors {
-                ui.colored_label(Color32::from_rgb(214, 151, 75),
-                    format!("{}: {}", self.name(adapter), problem));
             }
-        }
+        });
+        ui.label(RichText::new(l.t(
+            "Optional für Empfang, erforderlich zum Senden. Nur signierte Installationsdateien von npcap.com verwenden; Lizenz und UAC beachten.",
+            "Optional for capture, required for advertising. Use signed installers only from npcap.com; review license and UAC.",
+            "Optioneel voor ontvangst, vereist voor verzenden. Gebruik alleen ondertekende installatiebestanden van npcap.com."
+        )).small().weak());
     }
     fn adapters_ui(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
-        Self::title(
-            ui,
-            l.t("Netzwerkadapter", "Network adapters", "Netwerkadapters"),
-            l.t(
-                "Wähle die Schnittstellen für den parallelen Empfang.",
-                "Select interfaces for concurrent capture.",
-                "Selecteer interfaces voor gelijktijdige ontvangst.",
-            ),
-        );
-        self.capture_backend_ui(ui);
-        ui.add_space(6.);
-        egui::CollapsingHeader::new(l.t(
-            "Npcap (optional · für LLDP-Senden)",
-            "Npcap (optional · for LLDP advertising)",
-            "Npcap (optioneel · voor LLDP-verzenden)",
-        ))
-            .default_open(self.settings.capture_backend == CaptureBackend::Npcap)
-            .show(ui, |ui| self.npcap_setup_ui(ui));
-        ui.add_space(10.);
+        Self::title(ui,
+            l.t("Netzwerkadapter", "Network adapters", "Netwerkadapters"), "");
         ui.horizontal(|ui| {
-            if ui
-                .button(l.t("Neu erkennen", "Refresh adapters", "Adapters vernieuwen"))
-                .clicked()
-            {
-                self.stop();
-                match capture::adapters() {
-                    Ok(a) => {
-                        self.adapters = a;
-                        self.chosen
-                            .retain(|id| self.adapters.iter().any(|a| &a.id == id));
-                        self.send_index = 0;
-                        self.load_profile();
-                    }
-                    Err(e) => self.notify(Err(e)),
-                }
+            if ui.small_button(l.t(
+                "Aktualisieren", "Refresh", "Vernieuwen"
+            )).clicked() {
+                self.refresh_adapters();
             }
-            if ui
-                .button(l.t("Auswahl anwenden", "Apply selection", "Selectie toepassen"))
-                .clicked()
-            {
-                self.start();
+            if self.selection_dirty {
+                if ui.button(l.t(
+                    "Auswahl übernehmen", "Apply selection", "Selectie toepassen"
+                )).clicked() {
+                    if self.chosen.is_empty() {
+                        self.stop();
+                        self.selection_dirty = false;
+                    } else {
+                        self.start();
+                    }
+                }
+                ui.label(RichText::new(l.t(
+                    "Auswahl geändert", "Selection changed", "Selectie gewijzigd"
+                )).small().weak());
+            } else {
+                ui.label(RichText::new(format!(
+                    "{} / {} {}",
+                    self.chosen.len(), self.adapters.len(),
+                    l.t("ausgewählt", "selected", "geselecteerd"),
+                )).small().weak());
             }
         });
-        ui.add_space(6.);
-        egui::ScrollArea::both().id_salt("adapter-table")
-            .auto_shrink([false, true]).show(ui, |ui| {
-                egui::Grid::new("adapter-grid").striped(true)
-                    .num_columns(5).spacing([14., 7.]).show(ui, |ui| {
-                    for heading in [
-                        l.t("Empfang", "Capture", "Ontvangst"),
-                        l.t("Adapter", "Adapter", "Adapter"),
-                        l.t("Verbindung", "Link", "Verbinding"),
-                        l.t("Status", "Status", "Status"),
-                        "MAC",
-                    ] {
-                        ui.label(RichText::new(heading).small().strong().weak());
+        ui.add_space(5.);
+        Self::surface(ui).show(ui, |ui| {
+            self.capture_backend_ui(ui);
+            egui::CollapsingHeader::new(l.t(
+                "Diagnose und Npcap",
+                "Diagnostics and Npcap",
+                "Diagnose en Npcap"
+            )).id_salt("capture-diagnostics").default_open(false).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.small_button(l.t(
+                        "Jetzt prüfen", "Check now", "Nu controleren"
+                    )).clicked() {
+                        self.native_report = Some(capture::inspect_packet_monitor());
+                        self.npcap = capture::inspect_npcap();
                     }
-                    ui.end_row();
-                    for a in &self.adapters {
-                        let mut checked = self.chosen.contains(&a.id);
-                        if ui.checkbox(&mut checked, "").changed() {
-                            if checked { self.chosen.insert(a.id.clone()); }
-                            else { self.chosen.remove(&a.id); }
-                        }
-                        ui.label(RichText::new(&a.name).strong())
-                            .on_hover_text(format!("{}\n{}\n{}", a.description, a.id, a.ips.join(", ")));
-                        ui.label(if a.up { l.t("Verbunden", "Connected", "Verbonden") }
-                            else { l.t("Getrennt", "Disconnected", "Verbroken") });
-                        if let Some(err) = self.capture_errors.get(&a.id) {
-                            ui.colored_label(Color32::from_rgb(218, 142, 72),
-                                l.t("Fehler", "Error", "Fout")).on_hover_text(err);
-                        } else {
-                            if self.ready.contains(&a.id) {
-                                ui.label(self.backend_names.get(&a.id)
-                                    .map(String::as_str).unwrap_or("Empfang aktiv"));
-                            } else {
-                                ui.label(l.t("Bereit", "Idle", "Gereed"));
-                            }
-                        }
-                        ui.monospace(a.mac.iter().map(|x| format!("{x:02X}"))
-                            .collect::<Vec<_>>().join(":"));
-                        ui.end_row();
-                    }
+                    ui.label(RichText::new(l.t(
+                        "Windows Packet Monitor / Npcap",
+                        "Windows Packet Monitor / Npcap",
+                        "Windows Packet Monitor / Npcap"
+                    )).small().weak());
                 });
+                if let Some(report) = &self.native_report {
+                    match report {
+                        Ok(info) => {
+                            ui.add(egui::Label::new(
+                                RichText::new(format!("Windows: {info}")).small()
+                            ).selectable(true).wrap());
+                        }
+                        Err(problem) => {
+                            ui.colored_label(Color32::from_rgb(204, 129, 69),
+                                format!("Windows: {problem}"));
+                        }
+                    }
+                }
+                self.npcap_setup_ui(ui);
+                for (id, problem) in &self.capture_errors {
+                    ui.colored_label(Color32::from_rgb(204, 129, 69),
+                        format!("{}: {problem}", self.name(id)));
+                }
+                for (id, detail) in &self.backend_notes {
+                    ui.label(RichText::new(format!("{}: {detail}", self.name(id)))
+                        .small().weak());
+                }
             });
+        });
+        ui.add_space(10.);
         if self.adapters.is_empty() {
             ui.label(l.t(
-                "Keine Ethernetadapter gefunden.",
-                "No Ethernet adapters found.",
-                "Geen ethernetadapters gevonden.",
+                "Keine Netzwerkadapter gefunden. Über „Aktualisieren“ erneut suchen.",
+                "No network adapters found. Try Refresh.",
+                "Geen netwerkadapters gevonden. Probeer Vernieuwen."
             ));
+            return;
         }
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(8., 4.);
+            egui::ScrollArea::both().id_salt("adapter-table")
+                .auto_shrink([false, true]).show(ui, |ui| {
+                    egui::Grid::new("adapter-grid").striped(true)
+                        .num_columns(4).spacing([16., 6.]).show(ui, |ui| {
+                        for heading in [
+                            l.t("Ein", "On", "Aan"),
+                            l.t("Schnittstelle", "Interface", "Interface"),
+                            l.t("Verbindung", "Link", "Verbinding"),
+                            l.t("Empfang", "Capture", "Ontvangst"),
+                        ] {
+                            ui.label(RichText::new(heading).small().strong().weak());
+                        }
+                        ui.end_row();
+                        for a in &self.adapters {
+                            let mut checked = self.chosen.contains(&a.id);
+                            if ui.checkbox(&mut checked, "").on_hover_text(l.t(
+                                "Empfang auf diesem Adapter", "Capture on this interface",
+                                "Ontvangst op deze adapter"
+                            )).changed() {
+                                if checked { self.chosen.insert(a.id.clone()); }
+                                else { self.chosen.remove(&a.id); }
+                                self.selection_dirty = true;
+                            }
+                            ui.label(RichText::new(&a.name).strong())
+                                .on_hover_text(format!("{}\n{}\n{}\n{:02X?}",
+                                    a.description, a.id, a.ips.join(", "), a.mac));
+                            ui.label(if a.up {
+                                l.t("Verbunden", "Connected", "Verbonden")
+                            } else {
+                                l.t("Getrennt", "Disconnected", "Verbroken")
+                            });
+                            if let Some(error) = self.capture_errors.get(&a.id) {
+                                ui.colored_label(Color32::from_rgb(211, 127, 76),
+                                    l.t("Fehler", "Error", "Fout")).on_hover_text(error);
+                            } else if self.ready.contains(&a.id) {
+                                ui.label(self.backend_names.get(&a.id)
+                                    .map(String::as_str).unwrap_or("Aktiv"));
+                            } else {
+                                ui.label(RichText::new(l.t(
+                                    "Inaktiv", "Idle", "Inactief"
+                                )).weak());
+                            }
+                            ui.end_row();
+                        }
+                    });
+                });
+        });
     }
     fn sender(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
