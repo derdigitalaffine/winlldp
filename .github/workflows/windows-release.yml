@@ -63,6 +63,35 @@ jobs:
         shell: pwsh
         run: ./scripts/package_windows.ps1
 
+      # UI QA uses synthetic adapters and a bundled LLDP fixture; no capture
+      # driver or physical switch is needed. Screenshots stay in CI artifacts.
+      - name: Render UI QA previews (best effort)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $gui = (Resolve-Path 'target/x86_64-pc-windows-msvc/release/winlldp.exe').Path
+          New-Item -Path 'build/previews' -ItemType Directory -Force | Out-Null
+          $cases = @(
+            @{ name = 'neighbors-dark'; args = @('--page','0','--dark','--open','tests/fixtures/lab.pcap') },
+            @{ name = 'adapters-light'; args = @('--page','1','--light','--qa-adapter') },
+            @{ name = 'sender-dark'; args = @('--page','2','--dark','--qa-adapter') },
+            @{ name = 'settings-light'; args = @('--page','4','--light','--qa-adapter') }
+          )
+          foreach ($case in $cases) {
+            $path = (Join-Path (Get-Location).Path "build/previews/$($case.name).png")
+            $arguments = @('--screenshot', $path, '--compact') + $case.args
+            $process = Start-Process -FilePath $gui -ArgumentList $arguments -PassThru
+            if (-not $process.WaitForExit(20000)) {
+              $process.Kill()
+              throw "UI preview timed out: $($case.name)"
+            }
+            if ($process.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $path)) {
+              throw "UI preview missing/failed: $($case.name) exit=$($process.ExitCode)"
+            }
+            Write-Host "UI preview: $path"
+          }
+
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
         with:
