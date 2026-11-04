@@ -1,0 +1,113 @@
+name: Windows x64 build and release
+
+on:
+  push:
+    branches:
+      - main
+      - feat/04-release-and-builds
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Test, build and package on Windows
+    runs-on: windows-2022
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install stable Rust MSVC toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies and build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run Rust tests on Windows
+        shell: pwsh
+        run: cargo test --locked --target x86_64-pc-windows-msvc
+
+      - name: Build native Windows executables
+        shell: pwsh
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc --bins
+
+      - name: Ensure Inno Setup 6 is available
+        shell: pwsh
+        run: |
+          $possiblePaths = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $found = $possiblePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (-not $found -and -not (Get-Command ISCC.exe -ErrorAction SilentlyContinue)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "Unable to install Inno Setup 6" }
+          }
+
+      - name: Package and smoke-test Windows EXEs and installer
+        shell: pwsh
+        run: ./scripts/package_windows.ps1
+
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WinLLDP-1.0.0-Windows-x64
+          path: build/
+          if-no-files-found: error
+
+      - name: Commit binaries and create release v1.0.0
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v1.0.0'
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists; not overwriting it."
+            exit 0
+          }
+
+          git fetch --tags
+          if ((git tag -l $tag) -eq $tag) {
+            throw "Tag $tag already exists without a release; refusing to move an immutable release tag."
+          }
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f build/
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            throw 'Windows build artifacts were not staged. Release will not be created.'
+          }
+          git commit -m 'build: add verified Windows v1.0.0 binaries and installer [skip ci]'
+          if ($LASTEXITCODE -ne 0) { throw 'Commit of build artifacts failed' }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw 'Push of build artifacts failed' }
+
+          git tag -a $tag -m 'WinLLDP v1.0.0 Windows x64'
+          if ($LASTEXITCODE -ne 0) { throw 'Creating release tag failed' }
+          git push origin $tag
+          if ($LASTEXITCODE -ne 0) { throw 'Pushing release tag failed' }
+
+          $assets = @(
+            'build/WinLLDP-1.0.0-Windows-x64.exe',
+            'build/winlldp-cli-1.0.0-Windows-x64.exe',
+            'build/WinLLDP-1.0.0-Windows-x64-Setup.exe',
+            'build/SHA256SUMS.txt',
+            'build/BUILD_INFO.txt',
+            'build/LICENSE.txt',
+            'build/THIRD_PARTY_NOTICES.md',
+            'build/Cargo.lock'
+          )
+          & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --title 'WinLLDP v1.0.0' --notes-file docs/RELEASE_NOTES_v1.0.0.md --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed' }
