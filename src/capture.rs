@@ -134,6 +134,31 @@ impl Drop for Engine {
         self.stop();
     }
 }
+
+/// Inspect the actual Npcap DLL, device enumeration and admin-only setting.
+/// Never assumes that DLL presence alone means capture is working.
+pub fn inspect_npcap() -> Result<NpcapReport, String> {
+    let api = Api::load()?;
+    let devices = unsafe { api.devices()? };
+    let version = unsafe {
+        let p = (api.version)();
+        if p.is_null() { "Npcap (unknown version)".into() }
+        else { CStr::from_ptr(p).to_string_lossy().into_owned() }
+    };
+    #[cfg(windows)]
+    let admin_only = {
+        use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
+        RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(r"SYSTEM\CurrentControlSet\Services\npcap\Parameters")
+            .ok()
+            .and_then(|key| key.get_value::<u32, _>("AdminOnly").ok())
+            .map(|value| value != 0)
+    };
+    #[cfg(not(windows))]
+    let admin_only = None;
+    Ok(NpcapReport { version, devices, admin_only })
+}
+
 pub fn is_local_source(frame: &[u8], mac: [u8; 6]) -> bool {
     mac != [0; 6] && frame.get(6..12) == Some(mac.as_slice())
 }
@@ -234,6 +259,27 @@ impl Api {
                 _library: l,
             })
         }
+    }
+    unsafe fn devices(&self) -> Result<Vec<String>, String> {
+        let mut head: *mut PcapIf = std::ptr::null_mut();
+        let mut err = [0i8; 256];
+        if (self.findalldevs)(&mut head, err.as_mut_ptr()) != 0 {
+            return Err(format!("Npcap adapter enumeration: {}",
+                CStr::from_ptr(err.as_ptr()).to_string_lossy()));
+        }
+        let mut result = Vec::new();
+        let mut current = head;
+        while !current.is_null() && result.len() < 1024 {
+            let device = &*current;
+            if !device.name.is_null() {
+                result.push(CStr::from_ptr(device.name).to_string_lossy().into_owned());
+            }
+            current = device.next;
+        }
+        if !head.is_null() {
+            (self.freealldevs)(head);
+        }
+        Ok(result)
     }
     unsafe fn err(&self, h: Handle) -> String {
         let p = (self.error)(h);
