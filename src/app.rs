@@ -24,6 +24,7 @@ pub struct App {
     selected: usize,
     query: String,
     detail_open: bool,
+    detail_key: Option<(String, String, String)>,
     npcap: Result<capture::NpcapReport, String>,
     capture_errors: BTreeMap<String, String>,
     own_frames: u64,
@@ -80,6 +81,7 @@ impl App {
             selected: 0,
             query: String::new(),
             detail_open: false,
+            detail_key: None,
             npcap: capture::inspect_npcap(),
             capture_errors: BTreeMap::new(),
             own_frames: 0,
@@ -567,6 +569,12 @@ impl App {
                                         || (response.has_focus()
                                             && ui.input(|input| input.key_pressed(egui::Key::Enter))) {
                                         self.selected = *index;
+                                        let neighbor = &self.monitor.neighbors[*index];
+                                        self.detail_key = Some((
+                                            neighbor.adapter.clone(),
+                                            neighbor.advertisement.chassis_id.clone(),
+                                            neighbor.advertisement.port_id.clone(),
+                                        ));
                                         self.detail_open = true;
                                     }
                                 }
@@ -577,9 +585,9 @@ impl App {
         });
     }
 
-    fn neighbor_details(&self, ui: &mut egui::Ui) {
+    fn neighbor_details(&self, ui: &mut egui::Ui, index: usize) {
         let l = self.settings.language;
-                    let n = &self.monitor.neighbors[self.selected];
+                    let n = &self.monitor.neighbors[index];
                     let a = &n.advertisement;
                     Self::surface(ui)
                         .inner_margin(18.)
@@ -1407,9 +1415,16 @@ impl eframe::App for App {
             });
         // Keep LLDP metadata off the main table. Double-click (or Enter) opens detail.
         if self.detail_open {
-            if self.selected >= self.monitor.neighbors.len() {
-                self.detail_open = false;
-            } else {
+            // Track a stable adapter/chassis/port identity rather than a vector index:
+            // TTL expiration can reorder neighbors while the dialog is open.
+            let selected_index = self.detail_key.as_ref().and_then(|(adapter, chassis, port)| {
+                self.monitor.neighbors.iter().position(|n| {
+                    &n.adapter == adapter
+                        && &n.advertisement.chassis_id == chassis
+                        && &n.advertisement.port_id == port
+                })
+            });
+            if let Some(selected_index) = selected_index {
                 let mut open = self.detail_open;
                 egui::Window::new(l.t("LLDP-Nachbar · Details", "LLDP neighbor · details", "LLDP-buur · details"))
                     .id(egui::Id::new("neighbor-detail-dialog"))
@@ -1419,9 +1434,12 @@ impl eframe::App for App {
                     .min_width(410.)
                     .show(ctx, |ui| {
                         egui::ScrollArea::vertical().id_salt("neighbor-detail-scroll")
-                            .show(ui, |ui| self.neighbor_details(ui));
+                            .show(ui, |ui| self.neighbor_details(ui, selected_index));
                     });
                 self.detail_open = open;
+            } else {
+                self.detail_open = false;
+                self.detail_key = None;
             }
         }
         if self.last_save.elapsed() > Duration::from_secs(10) {
