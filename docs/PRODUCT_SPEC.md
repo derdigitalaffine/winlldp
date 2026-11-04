@@ -9,6 +9,9 @@ Stand: 04.11.2026. Anforderungsinterview läuft.
 - Mindestens angeschlossenen Switch und Port anzeigen.
 - Umfang: „alles was ein extrem guter LLDP-Client können soll“; konkrete Funktionen und Prioritäten werden im Interview präzisiert.
 - Optional selbst LLDP senden/werben (vom Nutzer als „LLDP-Server“ bezeichnet).
+- Sendebetrieb standardmäßig ausgeschaltet; bewusst in einem eigenen Programmbereich einschaltbar.
+- Windows-Gerätename und Adapterdaten für die eigenen Ankündigungen automatisch vorbelegen, vor dem Senden bearbeitbar machen.
+- Auch beim Senden soll der vollständige LLDP-Funktionsumfang konfigurierbar sein. Die konkrete Liste unterstützter Standard-, LLDP-MED- und herstellerspezifischer TLVs wird technisch ausgearbeitet; „vollständig“ ist durch eine überprüfbare Funktionsmatrix zu konkretisieren.
 - Sendebetrieb innerhalb der Anwendung ohne Windows-Dienst.
 - Fertig kompilierte portable EXE und Installationspaket sollen im Repository als Build liegen.
 
@@ -17,7 +20,7 @@ Stand: 04.11.2026. Anforderungsinterview läuft.
 - Technischer Umfang und Voraussetzungen des Betriebs ohne Administratorrechte sowie des Betriebs mit Administratorrechten/Npcap.
 - Empfang/Senden je Adapter, automatische Adapterauswahl und mehrere Adapter gleichzeitig.
 - Detaillierte Darstellung aller LLDP-Daten einschließlich LLDP-MED und herstellerspezifischer Erweiterungen; zusätzliches CDP ist noch unbestätigt.
-- Inhalt und Konfiguration der eigenen LLDP-Ankündigungen.
+- Konkrete TLV-Funktionsmatrix für eigene LLDP-Ankündigungen; Profile und weitere Komfortfunktionen noch offen.
 - Live-Aktualisierung, Historie, Export und Diagnose.
 - Oberfläche, Sprache, Hintergrund-/Tray-Verhalten.
 - Installerumfang und optionaler Autostart.
