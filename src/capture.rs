@@ -393,13 +393,26 @@ fn adapter_identity(a: &Adapter) -> winptap::InterfaceIdentity<'_> {
 }
 
 #[cfg(windows)]
+fn is_remote_lldp_frame(
+    bytes: &[u8],
+    local_mac: [u8; 6],
+    link_type: winptap::LinkType,
+    direction: winptap::Direction,
+) -> bool {
+    link_type == winptap::LinkType::Ethernet
+        && direction != winptap::Direction::Transmit
+        && !is_local_source(bytes, local_mac)
+        && protocol::parse(bytes).is_ok()
+}
+
+#[cfg(windows)]
 fn run_windows(
     a: &Adapter,
     rx: &Receiver<Command>,
     tx: &SyncSender<Notice>,
 ) -> Result<(), String> {
     use winptap::{
-        CaptureConfig, CaptureDevice, Direction, Error as WinError, Filter,
+        CaptureConfig, CaptureDevice, Error as WinError, Filter,
         LinkType, PacketReceiver,
     };
     // OS interface IDs are NPF-prefixed GUIDs for historical Npcap use.
@@ -445,17 +458,14 @@ fn run_windows(
                     Err(WinError::Timeout) => break,
                     Err(e) => return Err(e.to_string()),
                 };
-                if frame.metadata().link_type != LinkType::Ethernet
-                    || frame.metadata().direction == Direction::Transmit
-                {
-                    continue;
-                }
                 let bytes = frame.data();
-                if protocol::parse(bytes).is_err() {
-                    continue;
-                }
                 if is_local_source(bytes, a.mac) {
                     notice(tx, Notice::LocalFrame(a.id.clone()));
+                    continue;
+                }
+                if !is_remote_lldp_frame(
+                    bytes, a.mac, frame.metadata().link_type, frame.metadata().direction
+                ) {
                     continue;
                 }
                 notice(tx, Notice::Frame(Packet {
@@ -640,5 +650,28 @@ mod own_frame_tests {
         assert!(!is_local_source(&frame, mac));
         assert!(!is_local_source(&frame[..10], mac));
         assert!(!is_local_source(&frame, [0; 6]));
+    }
+}
+
+#[cfg(all(test, windows))]
+mod native_packet_tests {
+    use super::*;
+    use winptap::{Direction, LinkType};
+
+    #[test]
+    fn native_receive_requires_incoming_ethernet_lldp_from_other_mac() {
+        let self_mac = [2, 1, 1, 1, 1, 1];
+        let switch_mac = [2, 10, 20, 30, 40, 50];
+        let profile = TxProfile {
+            chassis_value: "02:0A:14:1E:28:32".into(),
+            port_value: "Ethernet1/1".into(),
+            ..Default::default()
+        };
+        let frame = protocol::encode(&profile, switch_mac, false).unwrap();
+        assert!(is_remote_lldp_frame(&frame, self_mac, LinkType::Ethernet, Direction::Receive));
+        assert!(!is_remote_lldp_frame(&frame, switch_mac, LinkType::Ethernet, Direction::Receive));
+        assert!(!is_remote_lldp_frame(&frame, self_mac, LinkType::Ethernet, Direction::Transmit));
+        assert!(!is_remote_lldp_frame(&frame, self_mac, LinkType::RawIp, Direction::Receive));
+        assert!(!is_remote_lldp_frame(&frame[..12], self_mac, LinkType::Ethernet, Direction::Receive));
     }
 }
