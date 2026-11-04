@@ -383,6 +383,16 @@ fn run_auto(a: Adapter, backend: CaptureBackend, rx: Receiver<Command>, tx: Sync
 }
 
 #[cfg(windows)]
+fn adapter_identity(a: &Adapter) -> winptap::InterfaceIdentity<'_> {
+    winptap::InterfaceIdentity {
+        // The OS adapter ID is a GUID wrapped in the historical Npcap prefix.
+        name: a.id.strip_prefix("\\Device\\NPF_").unwrap_or(&a.id),
+        description: Some(&a.description),
+        mac_address: Some(a.mac),
+    }
+}
+
+#[cfg(windows)]
 fn run_windows(
     a: &Adapter,
     rx: &Receiver<Command>,
@@ -390,20 +400,15 @@ fn run_windows(
 ) -> Result<(), String> {
     use winptap::{
         CaptureConfig, CaptureDevice, Direction, Error as WinError, Filter,
-        InterfaceIdentity, LinkType, PacketReceiver,
+        LinkType, PacketReceiver,
     };
     // OS interface IDs are NPF-prefixed GUIDs for historical Npcap use.
     // Never guess a pktmon component from an enumeration index.
     let all = adapters()?;
-    let identity = |item: &Adapter| InterfaceIdentity {
-        name: item.id.strip_prefix("\\Device\\NPF_").unwrap_or(&item.id),
-        description: Some(item.description.as_str()),
-        mac_address: Some(item.mac),
-    };
-    let interfaces: Vec<_> = all.iter().map(identity).collect();
+    let interfaces: Vec<_> = all.iter().map(adapter_identity).collect();
     let capture_devices = CaptureDevice::list().map_err(|e| e.to_string())?;
     let capture_device = CaptureDevice::for_interface(
-        identity(a), &interfaces, &capture_devices,
+        adapter_identity(a), &interfaces, &capture_devices,
     ).map_err(|e| format!("adapter mapping: {e}"))?;
 
     // Driver and application filters both restrict capture to LLDP EtherType.
