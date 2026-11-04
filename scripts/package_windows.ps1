@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$version = "1.0.2"
+$version = "1.1.0"
 $target = "x86_64-pc-windows-msvc"
 $releaseDir = Join-Path "target" "$target/release"
 $buildDir = "build"
@@ -36,7 +36,7 @@ try {
     & $cli --doctor --output $doctorReport
     if ($LASTEXITCODE -ne 0) { throw "CLI --doctor returned $LASTEXITCODE" }
     $doctor = Get-Content -LiteralPath $doctorReport -Raw | ConvertFrom-Json
-    if ($null -eq $doctor.npcap -or $null -eq $doctor.adapters) {
+    if ($null -eq $doctor.npcap -or $null -eq $doctor.adapters -or $null -eq $doctor.windows_packet_monitor) {
         throw "CLI --doctor did not produce the required Npcap and adapter fields"
     }
 } finally {
@@ -82,7 +82,7 @@ $rustVersion = (& rustc --version).Trim()
     "Smoke: WinLLDP.exe --self-test --report FILE, winlldp-cli.exe --help and --doctor (passed)"
     "Installer: Inno Setup 6, per-user installation, includes uninstall entry"
     "Release binaries: unsigned; verify SHA256SUMS.txt before use"
-    "Npcap: external optional driver, NOT bundled; required for live LLDP access"
+    "Receive: Windows Packet Monitor built into Windows (administrator), or optional Npcap capture"\n    "Advertise: external Npcap driver required; not bundled"
     "Hardware/network capture and installation/uninstallation on actual user PCs: not validated in CI"
 ) | Set-Content -LiteralPath "$buildDir/BUILD_INFO.txt" -Encoding utf8
 
