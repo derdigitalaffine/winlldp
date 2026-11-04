@@ -50,6 +50,24 @@ pub fn adapters() -> Result<Vec<Adapter>, String> {
         Ok(vec![])
     }
 }
+/// Receive backend. Auto prefers Windows Packet Monitor and falls back to Npcap.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CaptureBackend {
+    #[default]
+    Auto,
+    Windows,
+    Npcap,
+}
+impl CaptureBackend {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "Automatic (Windows first, Npcap fallback)",
+            Self::Windows => "Windows Packet Monitor",
+            Self::Npcap => "Npcap",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Notice {
     Frame(Packet),
@@ -57,6 +75,8 @@ pub enum Notice {
     Error(String, String),
     Tx(String, bool),
     LocalFrame(String),
+    Backend(String, String),
+    Diagnostic(String, String),
 }
 #[derive(Clone)]
 enum Command {
@@ -75,11 +95,20 @@ pub struct Engine {
 }
 impl Engine {
     pub fn start(&mut self, devices: &[Adapter]) -> Result<(), String> {
+        self.start_with(devices, CaptureBackend::Auto)
+    }
+    pub fn start_with(&mut self, devices: &[Adapter], backend: CaptureBackend) -> Result<(), String> {
         self.stop();
         if devices.is_empty() {
             return Err("No adapter selected".into());
         }
-        let api = Arc::new(Api::load()?);
+        // Only explicit Npcap requires loading a third-party DLL at startup.
+        // Native receive is usable with no Npcap installed.
+        let api = if backend == CaptureBackend::Npcap {
+            Some(Arc::new(Api::load()?))
+        } else {
+            None
+        };
         let (tx, rx) = mpsc::sync_channel(512);
         self.rx = Some(rx);
         for adapter in devices {
@@ -88,7 +117,14 @@ impl Engine {
             let tx = tx.clone();
             let (ctx, crx) = mpsc::channel();
             let id = adapter.id.clone();
-            let join = thread::spawn(move || run(api, adapter, crx, tx));
+            let join = thread::spawn(move || {
+                if let Some(api) = api {
+                    notice(&tx, Notice::Backend(adapter.id.clone(), "Npcap".into()));
+                    run(api, adapter, crx, tx);
+                } else {
+                    run_auto(adapter, backend, crx, tx);
+                }
+            });
             self.workers.push(Worker {
                 id,
                 command: ctx,
