@@ -38,6 +38,26 @@ jobs:
       - name: Cache Rust dependencies and build
         uses: Swatinem/rust-cache@v2
 
+      # One-time migration: resolve the new Windows-only winptap dependency on the
+      # MSVC runner and commit its exact checksums for subsequent --locked builds.
+      - name: Resolve and commit native capture Cargo.lock
+        if: github.ref == 'refs/heads/feat/07-native-pktmon-v1.1.0'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cargo metadata --format-version 1 --target x86_64-pc-windows-msvc *> $null
+          if ($LASTEXITCODE -ne 0) { throw 'Cargo dependency resolution failed' }
+          git add Cargo.lock
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit -m 'build: lock native Packet Monitor dependencies for v1.1.0'
+            if ($LASTEXITCODE -ne 0) { throw 'Lockfile commit failed' }
+            git push origin HEAD:feat/07-native-pktmon-v1.1.0
+            if ($LASTEXITCODE -ne 0) { throw 'Lockfile push failed' }
+          }
+
       - name: Run Rust tests on Windows
         shell: pwsh
         run: cargo test --locked --target x86_64-pc-windows-msvc
