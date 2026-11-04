@@ -62,18 +62,18 @@ jobs:
       - name: Upload Windows build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: WinLLDP-1.0.1-Windows-x64
+          name: WinLLDP-1.0.2-Windows-x64
           path: build/
           if-no-files-found: error
 
-      - name: Commit binaries and create release v1.0.1
+      - name: Commit binaries and create release v1.0.2
         if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = 'v1.0.1'
+          $tag = 'v1.0.2'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists; not overwriting it."
@@ -92,25 +92,25 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             throw 'Windows build artifacts were not staged. Release will not be created.'
           }
-          git commit -m 'build: add verified Windows v1.0.1 binaries and installer [skip ci]'
+          git commit -m 'build: add verified Windows v1.0.2 binaries and installer [skip ci]'
           if ($LASTEXITCODE -ne 0) { throw 'Commit of build artifacts failed' }
           git push origin HEAD:main
           if ($LASTEXITCODE -ne 0) { throw 'Push of build artifacts failed' }
 
-          git tag -a $tag -m 'WinLLDP v1.0.1 Windows x64'
+          git tag -a $tag -m 'WinLLDP v1.0.2 Windows x64'
           if ($LASTEXITCODE -ne 0) { throw 'Creating release tag failed' }
           git push origin $tag
           if ($LASTEXITCODE -ne 0) { throw 'Pushing release tag failed' }
 
           $assets = @(
-            'build/WinLLDP-1.0.1-Windows-x64.exe',
-            'build/winlldp-cli-1.0.1-Windows-x64.exe',
-            'build/WinLLDP-1.0.1-Windows-x64-Setup.exe',
+            'build/WinLLDP-1.0.2-Windows-x64.exe',
+            'build/winlldp-cli-1.0.2-Windows-x64.exe',
+            'build/WinLLDP-1.0.2-Windows-x64-Setup.exe',
             'build/SHA256SUMS.txt',
             'build/BUILD_INFO.txt',
             'build/LICENSE.txt',
             'build/THIRD_PARTY_NOTICES.md',
             'build/Cargo.lock'
           )
-          & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --title 'WinLLDP v1.0.1' --notes-file docs/RELEASE_NOTES_v1.0.1.md --verify-tag
+          & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --title 'WinLLDP v1.0.2' --notes-file docs/RELEASE_NOTES_v1.0.2.md --verify-tag
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed' }
