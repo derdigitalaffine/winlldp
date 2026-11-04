@@ -26,6 +26,7 @@ pub struct App {
     detail_open: bool,
     selection_dirty: bool,
     confirm_clear_history: bool,
+    selected_event: Option<Event>,
     detail_key: Option<(String, String, String)>,
     npcap: Result<capture::NpcapReport, String>,
     capture_errors: BTreeMap<String, String>,
@@ -88,6 +89,7 @@ impl App {
             detail_open: false,
             selection_dirty: false,
             confirm_clear_history: false,
+            selected_event: None,
             detail_key: None,
             npcap: capture::inspect_npcap(),
             capture_errors: BTreeMap::new(),
@@ -1231,99 +1233,168 @@ impl App {
     }
     fn history(&mut self, ui: &mut egui::Ui) {
         let l = self.settings.language;
-        Self::title(ui,l.t("Änderungsprotokoll","Activity log","Activiteitenlogboek"),l.t("Entdeckungen, Änderungen, Ablauf und Senderstatus. Lokal, maximal 2000 Ereignisse.","Discoveries, changes, expiration and sender status. Local, up to 2000 events.","Ontdekkingen, wijzigingen, verlopen en verzendstatus. Lokaal, maximaal 2000 gebeurtenissen."));
+        Self::title(ui,
+            l.t("Protokoll", "Activity log", "Logboek"), "");
         ui.horizontal(|ui| {
-            if ui
-                .button(l.t("JSON exportieren", "Export JSON", "JSON exporteren"))
-                .clicked()
-            {
-                self.export("JSON");
-            }
-            if ui
-                .button(l.t("Protokoll leeren", "Clear log", "Logboek wissen"))
-                .clicked()
-            {
-                self.monitor.events.clear();
-                let _ = std::fs::remove_file(settings::data_dir().join("history.json"));
+            ui.label(RichText::new(format!(
+                "{} {}", self.monitor.events.len(),
+                l.t("Ereignisse", "events", "gebeurtenissen"),
+            )).small().weak());
+            self.file_menu(ui);
+            if !self.monitor.events.is_empty() &&
+                ui.small_button(l.t("Leeren …", "Clear …", "Wissen …")).clicked() {
+                self.confirm_clear_history = true;
             }
         });
+        ui.add_space(6.);
         if self.monitor.events.is_empty() {
             ui.label(l.t(
-                "Noch keine Ereignisse.",
-                "No events yet.",
-                "Nog geen gebeurtenissen.",
+                "Noch keine Ereignisse.", "No events yet.", "Nog geen gebeurtenissen."
             ));
+            return;
         }
-        ui.add_space(10.);
-        Self::surface(ui).inner_margin(12.).show(ui, |ui| {
-            egui::Grid::new("events")
-                .num_columns(3)
-                .striped(true)
-                .spacing([16., 8.])
-                .show(ui, |ui| {
-                    for heading in [
-                        l.t("ZEIT", "TIME", "TIJD"),
-                        l.t("ADAPTER", "ADAPTER", "ADAPTER"),
-                        l.t("EREIGNIS", "EVENT", "GEBEURTENIS"),
-                    ] {
-                        ui.label(RichText::new(heading).small().weak().strong());
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(8., 4.);
+            egui::Grid::new("event-table").striped(true)
+                .num_columns(3).spacing([16., 5.]).show(ui, |ui| {
+                for heading in [
+                    l.t("Zeit (UTC)", "Time (UTC)", "Tijd (UTC)"),
+                    l.t("Adapter", "Adapter", "Adapter"),
+                    l.t("Ereignis", "Event", "Gebeurtenis"),
+                ] {
+                    ui.label(RichText::new(heading).small().strong().weak());
+                }
+                ui.end_row();
+                for event in self.monitor.events.iter().take(250) {
+                    ui.monospace(event.at.format("%d.%m. %H:%M:%S").to_string());
+                    ui.label(&event.adapter);
+                    let response = ui.selectable_label(false, event_name(l, &event.action))
+                        .on_hover_text(&event.detail);
+                    if response.double_clicked() {
+                        self.selected_event = Some(event.clone());
                     }
                     ui.end_row();
-                    for e in &self.monitor.events {
-                    ui.label(
-                        RichText::new(e.at.format("%d.%m. %H:%M:%S").to_string())
-                            .monospace()
-                            .small(),
-                    );
-                    ui.label(&e.adapter);
-                    ui.vertical(|ui| {
-                        ui.strong(event_name(l, &e.action));
-                        ui.add(egui::Label::new(&e.detail).selectable(true).wrap());
-                    });
-                    ui.end_row();
-                    }
-                });
+                }
+            });
         });
+        if self.monitor.events.len() > 250 {
+            ui.label(RichText::new(l.t(
+                "Die neuesten 250 Ereignisse werden angezeigt.",
+                "Showing the latest 250 events.",
+                "De nieuwste 250 gebeurtenissen worden getoond."
+            )).small().weak());
+        }
     }
     fn settings_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let l = self.settings.language;
-        Self::title(
-            ui,
-            l.t("Einstellungen", "Settings", "Instellingen"),
-            l.t(
-                "Dein Arbeitsablauf. Deine Sprache. Dein Design.",
-                "Your workflow. Your language. Your theme.",
-                "Je werkwijze. Je taal. Je thema.",
-            ),
-        );
-        Self::surface(ui).inner_margin(18.).show(ui,|ui|{
-   ui.strong(l.t("Sprache","Language","Taal"));ui.horizontal(|ui|{for lang in [L::Deutsch,L::English,L::Nederlands]{if ui.selectable_value(&mut self.settings.language,lang,format!("{lang:?}")).changed(){self.save();}}});
-   ui.separator();ui.strong(l.t("Darstellung","Appearance","Weergave"));ui.horizontal(|ui|{for(theme,label)in [(Theme::System,l.t("Wie Windows","Follow Windows","Zoals Windows")),(Theme::Light,l.t("Hell","Light","Licht")),(Theme::Dark,l.t("Dunkel","Dark","Donker"))]{if ui.selectable_value(&mut self.settings.theme,theme,label).changed(){self.apply_theme(ctx);self.save();}}});
-   ui.separator();if ui.checkbox(&mut self.settings.close_to_tray,l.t("Beim Schließen in den Infobereich minimieren","Minimize to tray when closing","Bij sluiten minimaliseren naar systeemvak")).changed(){self.save();}ui.label(RichText::new(l.t("Über das Traymenü oder „Beenden“ vollständig schließen. Ein aktiver Sender läuft im Tray weiter.","Use the tray menu or Quit to exit completely. An active sender continues in the tray.","Gebruik het systeemvakmenu of Afsluiten om volledig te stoppen. Een actieve zender blijft in het systeemvak werken.")).weak());
-   if ui.checkbox(&mut self.settings.keep_history,l.t("Änderungsprotokoll lokal aufbewahren","Keep activity log locally","Activiteitenlogboek lokaal bewaren")).changed(){if !self.settings.keep_history{let _=std::fs::remove_file(settings::data_dir().join("history.json"));}self.save();}
-  });
-        ui.add_space(16.);
-        Self::surface(ui).inner_margin(18.).show(ui,|ui|{ui.strong(l.t("Zugriffsmodus","Access mode","Toegangsmodus"));let admin=crate::platform::is_admin();ui.label(if admin{l.t("Administratorzugriff aktiv","Administrator access active","Beheerderstoegang actief")}else{l.t("Standardzugriff ohne Administratorrechte","Standard access without administrator rights","Standaardtoegang zonder beheerdersrechten")});ui.label(l.t("Live-LLDP-Empfang nutzt standardmäßig Windows Packet Monitor (Adminrechte nötig, kein Npcap erforderlich), bei Bedarf Npcap als Fallback. LLDP-Senden benötigt weiterhin Npcap.","Live LLDP receive defaults to Windows Packet Monitor (admin rights, no Npcap required), with Npcap fallback. LLDP advertising still requires Npcap.","Live LLDP-ontvangst gebruikt standaard Windows Packet Monitor (beheerder vereist, geen Npcap nodig), met Npcap als terugvaloptie. Verzenden vereist Npcap."));
-   if !admin&&ui.button(l.t("Als Administrator neu starten …","Restart as administrator …","Opnieuw starten als beheerder …")).clicked(){match crate::platform::elevate(){Ok(())=>{self.exit=true;ctx.send_viewport_cmd(egui::ViewportCommand::Close);},Err(e)=>self.notify(Err(e))}}
-   if admin && ui.button(l.t("Mit Standardzugriff neu starten …", "Restart with standard access …", "Opnieuw starten met standaardtoegang …")).clicked() {
-       match crate::platform::standard_access() {
-           Ok(()) => { self.exit = true; ctx.send_viewport_cmd(egui::ViewportCommand::Close); },
-           Err(e) => self.notify(Err(e)),
-       }
-   }
-   ui.hyperlink_to(l.t("Npcap-Download und Lizenz","Npcap download and license","Npcap-download en licentie"),"https://npcap.com/#download");
-  });
-        ui.add_space(12.);
-        ui.label(l.t(
-            "Keine Telemetrie. Daten und Profile bleiben auf diesem Rechner.",
-            "No telemetry. Data and profiles stay on this computer.",
-            "Geen telemetrie. Gegevens en profielen blijven op deze computer.",
-        ));
-        ui.add(
-            egui::Label::new(settings::data_dir().display().to_string())
-                .selectable(true)
-                .wrap(),
-        );
+        Self::title(ui, l.t(
+            "Einstellungen", "Settings", "Instellingen"
+        ), "");
+        let old_language = self.settings.language;
+        let old_theme = self.settings.theme;
+        let old_tray = self.settings.close_to_tray;
+        let old_history = self.settings.keep_history;
+        Self::surface(ui).show(ui, |ui| {
+            egui::Grid::new("preferences-grid")
+                .num_columns(2).spacing([18., 12.]).show(ui, |ui| {
+                ui.label(l.t("Sprache", "Language", "Taal"));
+                egui::ComboBox::from_id_salt("setting-language")
+                    .selected_text(match self.settings.language {
+                        L::Deutsch => "Deutsch",
+                        L::English => "English",
+                        L::Nederlands => "Nederlands",
+                    }).show_ui(ui, |ui| {
+                        for (lang, label) in [
+                            (L::Deutsch, "Deutsch"),
+                            (L::English, "English"),
+                            (L::Nederlands, "Nederlands"),
+                        ] {
+                            ui.selectable_value(&mut self.settings.language, lang, label);
+                        }
+                    });
+                ui.end_row();
+                ui.label(l.t("Design", "Appearance", "Uiterlijk"));
+                egui::ComboBox::from_id_salt("setting-theme")
+                    .selected_text(match self.settings.theme {
+                        Theme::System => l.t("System", "System", "Systeem"),
+                        Theme::Light => l.t("Hell", "Light", "Licht"),
+                        Theme::Dark => l.t("Dunkel", "Dark", "Donker"),
+                    }).show_ui(ui, |ui| {
+                        for (theme, label) in [
+                            (Theme::System, l.t("System", "System", "Systeem")),
+                            (Theme::Light, l.t("Hell", "Light", "Licht")),
+                            (Theme::Dark, l.t("Dunkel", "Dark", "Donker")),
+                        ] {
+                            ui.selectable_value(&mut self.settings.theme, theme, label);
+                        }
+                    });
+                ui.end_row();
+            });
+            ui.separator();
+            ui.checkbox(&mut self.settings.close_to_tray, l.t(
+                "Beim Schließen im Infobereich weiterlaufen",
+                "Continue in tray when window closes",
+                "Verdergaan in systeemvak bij sluiten"
+            ));
+            ui.checkbox(&mut self.settings.keep_history, l.t(
+                "Protokoll lokal aufbewahren",
+                "Keep activity log locally",
+                "Logboek lokaal bewaren"
+            ));
+        });
+        if old_language != self.settings.language ||
+            old_theme != self.settings.theme ||
+            old_tray != self.settings.close_to_tray ||
+            old_history != self.settings.keep_history {
+            if old_history && !self.settings.keep_history {
+                let _ = std::fs::remove_file(settings::data_dir().join("history.json"));
+            }
+            if old_theme != self.settings.theme {
+                self.apply_theme(ctx);
+            }
+            self.save();
+        }
+        ui.add_space(10.);
+        egui::CollapsingHeader::new(l.t(
+            "Zugriff und Datenschutz", "Access and privacy", "Toegang en privacy"
+        )).id_salt("access-privacy").show(ui, |ui| {
+            let admin = crate::platform::is_admin();
+            ui.label(if admin {
+                l.t("Administratorrechte aktiv",
+                    "Running as administrator", "Beheerdersrechten actief")
+            } else {
+                l.t("Standardbenutzer",
+                    "Standard user", "Standaardgebruiker")
+            });
+            if !admin {
+                if ui.small_button(l.t(
+                    "Als Administrator neu starten …",
+                    "Restart as administrator …",
+                    "Opnieuw starten als beheerder …"
+                )).clicked() {
+                    self.restart_elevated(ctx);
+                }
+            } else if ui.small_button(l.t(
+                "Als Standardbenutzer neu starten …",
+                "Restart as standard user …",
+                "Herstart als standaardgebruiker …"
+            )).clicked() {
+                match crate::platform::standard_access() {
+                    Ok(()) => {
+                        self.exit = true;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                    Err(error) => self.notify(Err(error)),
+                }
+            }
+            ui.label(RichText::new(l.t(
+                "Keine Telemetrie. Einstellungen und Protokoll bleiben lokal.",
+                "No telemetry. Preferences and activity remain local.",
+                "Geen telemetrie. Instellingen en logboek blijven lokaal."
+            )).small().weak());
+            ui.add(egui::Label::new(settings::data_dir().display().to_string())
+                .selectable(true).wrap());
+        });
     }
     fn about(&self, ui: &mut egui::Ui) {
         let l = self.settings.language;
