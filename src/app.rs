@@ -725,6 +725,76 @@ impl App {
                     }
 
     }
+    fn capture_backend_ui(&mut self, ui: &mut egui::Ui) {
+        let l = self.settings.language;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(l.t("Empfang über", "Receive via", "Ontvangst via")).strong());
+            let previous = self.settings.capture_backend;
+            egui::ComboBox::from_id_salt("capture-backend")
+                .selected_text(match previous {
+                    CaptureBackend::Auto => l.t("Automatisch", "Automatic", "Automatisch"),
+                    CaptureBackend::Windows => "Windows Packet Monitor",
+                    CaptureBackend::Npcap => "Npcap",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Auto,
+                        l.t("Automatisch (Windows → Npcap)",
+                            "Automatic (Windows → Npcap)",
+                            "Automatisch (Windows → Npcap)"));
+                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Windows,
+                        "Windows Packet Monitor (Admin)");
+                    ui.selectable_value(&mut self.settings.capture_backend, CaptureBackend::Npcap,
+                        "Npcap");
+                });
+            if self.settings.capture_backend != previous {
+                self.start();
+                self.save();
+            }
+            if crate::platform::is_admin() {
+                ui.label(RichText::new(l.t(
+                    "Administrator", "Administrator", "Beheerder"
+                )).small().weak());
+            } else {
+                ui.label(RichText::new(l.t(
+                    "Windows-Empfang benötigt Adminrechte",
+                    "Native Windows capture requires administrator rights",
+                    "Windows-ontvangst vereist beheerdersrechten"
+                )).small().weak());
+                if ui.small_button(l.t("Als Admin neu starten …",
+                    "Restart as admin …", "Herstart als beheerder …")).clicked() {
+                    match crate::platform::elevate() {
+                        Ok(()) => {
+                            self.exit = true;
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        },
+                        Err(error) => self.notify(Err(error)),
+                    }
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(l.t(
+                "Ohne Zusatztreiber empfangen · zum Senden Npcap auswählen",
+                "Receive without an added driver · select Npcap to advertise",
+                "Ontvangen zonder extra stuurprogramma · kies Npcap om te verzenden"
+            )).small().weak());
+            if ui.small_button(l.t("Windows-Diagnose", "Windows diagnostics", "Windows-diagnose"))
+                .clicked() {
+                self.native_report = Some(capture::inspect_packet_monitor());
+            }
+        });
+        if let Some(report) = &self.native_report {
+            match report {
+                Ok(info) => {
+                    ui.label(RichText::new(format!("Windows Packet Monitor: {info}")).small().weak());
+                }
+                Err(problem) => {
+                    ui.colored_label(Color32::from_rgb(214, 151, 75),
+                        format!("Windows Packet Monitor: {problem}"));
+                }
+            }
+        }
+    }
     /// Drive the Npcap installation flow from the application, without
     /// redistributing a third-party installer or silently bypassing Windows UAC.
     fn npcap_setup_ui(&mut self, ui: &mut egui::Ui) {
@@ -823,7 +893,15 @@ impl App {
                 "Selecteer interfaces voor gelijktijdige ontvangst.",
             ),
         );
-        self.npcap_setup_ui(ui);
+        self.capture_backend_ui(ui);
+        ui.add_space(6.);
+        egui::CollapsingHeader::new(l.t(
+            "Npcap (optional · für LLDP-Senden)",
+            "Npcap (optional · for LLDP advertising)",
+            "Npcap (optioneel · voor LLDP-verzenden)",
+        ))
+            .default_open(self.settings.capture_backend == CaptureBackend::Npcap)
+            .show(ui, |ui| self.npcap_setup_ui(ui));
         ui.add_space(10.);
         ui.horizontal(|ui| {
             if ui
@@ -878,9 +956,12 @@ impl App {
                             ui.colored_label(Color32::from_rgb(218, 142, 72),
                                 l.t("Fehler", "Error", "Fout")).on_hover_text(err);
                         } else {
-                            ui.label(if self.ready.contains(&a.id) {
-                                l.t("Empfang läuft", "Listening", "Luistert")
-                            } else { l.t("Bereit", "Idle", "Gereed") });
+                            if self.ready.contains(&a.id) {
+                                ui.label(self.backend_names.get(&a.id)
+                                    .map(String::as_str).unwrap_or("Empfang aktiv"));
+                            } else {
+                                ui.label(l.t("Bereit", "Idle", "Gereed"));
+                            }
                         }
                         ui.monospace(a.mac.iter().map(|x| format!("{x:02X}"))
                             .collect::<Vec<_>>().join(":"));
