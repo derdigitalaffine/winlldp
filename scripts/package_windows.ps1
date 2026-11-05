@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$version = "1.2.0"
+$version = "1.2.1"
 $target = "x86_64-pc-windows-msvc"
 $releaseDir = Join-Path "target" "$target/release"
 $buildDir = "build"
@@ -90,7 +90,7 @@ $rustVersion = (& rustc --version).Trim()
     "Hardware/network capture and installation/uninstallation on actual user PCs: not validated in CI"
 ) | Set-Content -LiteralPath "$buildDir/BUILD_INFO.txt" -Encoding utf8
 
-$executables = @(Get-ChildItem -LiteralPath $buildDir -File | Where-Object { $_.Name -match "^WinLLDP(-CLI)?-Linux-x64$|^WinLLDP-1\.2\.0-Windows-x64.*\.exe$|^winlldp-cli-1\.2\.0-Windows-x64\.exe$" } | Sort-Object Name)
+$executables = @(Get-ChildItem -LiteralPath $buildDir -File | Where-Object { $_.Name -match "^WinLLDP(-CLI)?-Linux-x64$|^WinLLDP-1\.2\.1-Windows-x64.*\.exe$|^winlldp-cli-1\.2\.1-Windows-x64\.exe$" } | Sort-Object Name)
 if ($executables.Count -lt 3) { throw "Expected Windows GUI, CLI and setup EXEs" }
 $shaLines = foreach ($file in $executables) {
     $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

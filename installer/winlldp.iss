@@ -1,5 +1,5 @@
 #define MyAppName "WinLLDP"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.2.1"
 #define MyAppPublisher "Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg"
 
 [Setup]
@@ -21,12 +21,12 @@ UninstallDisplayIcon={app}\WinLLDP.exe
 Compression=lzma2
 SolidCompression=yes
 OutputDir=..\build
-OutputBaseFilename=WinLLDP-1.2.0-Windows-x64-Setup
+OutputBaseFilename=WinLLDP-1.2.1-Windows-x64-Setup
 SetupIconFile=..\assets\winlldp.ico
 LicenseFile=..\LICENSE
 WizardStyle=modern
-VersionInfoVersion=1.2.0.0
-VersionInfoProductVersion=1.2.0.0
+VersionInfoVersion=1.2.1.0
+VersionInfoProductVersion=1.2.1.0
 VersionInfoDescription=WinLLDP Windows x64 installer
 
 [Languages]

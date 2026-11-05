@@ -30,6 +30,6 @@ Linux: Rust stable und Slint-Abhängigkeiten; `sh scripts/build-linux.sh`.
 
 ## Lizenz
 
-WinLLDP-Quellcode wird unter MIT und GPL-3.0-only angeboten. Die ausgelieferten Slint-Binaries verwenden die GPL-3.0-only-Lizenz des Toolkits. Lizenz- und Herkunftshinweise liegen in `LICENSE`, `LICENSE-GPL-3.0-only.txt`, `THIRD_PARTY_NOTICES.md` und `THIRD_PARTY_LICENSES.txt`.
+WinLLDP-Quellcode wird unter MIT und GPL-3.0-only angeboten. Die ausgelieferten Slint-Binaries verwenden die GPL-3.0-only-Lizenz des Toolkits. Lizenz- und Herkunftshinweise liegen in `LICENSE`, `LICENSE-GPL-3.0-only.txt`, `THIRD_PARTY_NOTICES.md` und `THIRD_PARTY_LICENSES.txt`; CI erzeugt die vollständige Abhängigkeitsliste aus `Cargo.lock`.
 
 Entwickelt von Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg.
