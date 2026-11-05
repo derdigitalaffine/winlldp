@@ -349,9 +349,10 @@ fn notice(tx: &SyncSender<Notice>, n: Notice) {
 pub fn inspect_packet_monitor() -> Result<String, String> {
     #[cfg(windows)]
     {
-        let capabilities =
-            winptap::capabilities(winptap::Backend::Auto).map_err(|e| e.to_string())?;
-        let devices = winptap::CaptureDevice::list().map_err(|e| e.to_string())?;
+        let capabilities = winptap::capabilities(winptap::Backend::Auto)
+            .map_err(|e| packet_monitor_failure(&e, None))?;
+        let devices = winptap::CaptureDevice::list()
+            .map_err(|e| packet_monitor_failure(&e, Some(capabilities.backend)))?;
         let names = devices
             .iter()
             .filter(|d| d.network_interface)
@@ -421,6 +422,28 @@ fn adapter_identity(a: &Adapter) -> winptap::InterfaceIdentity<'_> {
     }
 }
 
+/// Keep the actual Windows error code and capture implementation visible.
+/// A NativeIoctl failure is not the same as a permissions failure: the native
+/// backend depends on undocumented, Windows-build-specific driver controls.
+#[cfg(windows)]
+fn packet_monitor_failure(error: &winptap::Error, backend: Option<winptap::Backend>) -> String {
+    let backend_name = backend
+        .map(|backend| format!("{backend:?}"))
+        .unwrap_or_else(|| "not determined".into());
+    let detail = format!("{error} (Packet Monitor backend: {backend_name})");
+    if let winptap::Error::Windows { operation, code } = error {
+        if *operation == "DeviceIoControl" && *code == 1 {
+            return format!(
+                "{detail}. ERROR_INVALID_FUNCTION: Windows rejected a Packet Monitor driver control. \
+                 The NativeIoctl implementation uses an undocumented driver interface that may differ on this Windows build. \
+                 This is not ERROR_ACCESS_DENIED. Try receive backend Auto (Npcap fallback), or choose Npcap explicitly; \
+                 use --doctor and winver to collect diagnostics."
+            );
+        }
+    }
+    detail
+}
+
 #[cfg(windows)]
 fn is_remote_lldp_frame(
     bytes: &[u8],
@@ -443,7 +466,12 @@ fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> 
     // Never guess a pktmon component from an enumeration index.
     let all = adapters()?;
     let interfaces: Vec<_> = all.iter().map(adapter_identity).collect();
-    let capture_devices = CaptureDevice::list().map_err(|e| e.to_string())?;
+    let capture_devices = CaptureDevice::list().map_err(|e| {
+        format!(
+            "Packet Monitor enumeration: {}",
+            packet_monitor_failure(&e, None)
+        )
+    })?;
     let capture_device =
         CaptureDevice::for_interface(adapter_identity(a), &interfaces, &capture_devices)
             .map_err(|e| format!("adapter mapping: {e}"))?;
@@ -462,7 +490,8 @@ fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> 
         .capture_filter(lldp)
         .build()
         .map_err(|e| e.to_string())?;
-    let mut receiver = PacketReceiver::open(config).map_err(|e| e.to_string())?;
+    let mut receiver = PacketReceiver::open(config)
+        .map_err(|e| packet_monitor_failure(&e, Some(capture_device.backend)))?;
     notice(
         tx,
         Notice::Backend(
@@ -492,7 +521,9 @@ fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> 
                     Ok(Some(p)) => p,
                     Ok(None) => return Err("Packet Monitor stream closed".into()),
                     Err(WinError::Timeout) => break,
-                    Err(e) => return Err(e.to_string()),
+                    Err(e) => {
+                        return Err(packet_monitor_failure(&e, Some(capture_device.backend)));
+                    }
                 };
                 let bytes = frame.data();
                 if is_local_source(bytes, a.mac) {
@@ -520,7 +551,9 @@ fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> 
         }
         Ok(())
     })();
-    let stopped = receiver.stop().map_err(|e| e.to_string());
+    let stopped = receiver
+        .stop()
+        .map_err(|e| packet_monitor_failure(&e, Some(capture_device.backend)));
     notice(tx, Notice::Status(a.id.clone(), "capture_stopped".into()));
     result.and(stopped)
 }
@@ -699,6 +732,26 @@ mod own_frame_tests {
 mod native_packet_tests {
     use super::*;
     use winptap::{Direction, LinkType};
+
+    #[test]
+    fn invalid_function_diagnostic_identifies_backend_and_fallback() {
+        let error = winptap::Error::Windows {
+            operation: "DeviceIoControl",
+            code: 1,
+        };
+        let message = packet_monitor_failure(&error, Some(winptap::Backend::NativeIoctl));
+        assert!(message.contains("ERROR_INVALID_FUNCTION"));
+        assert!(message.contains("NativeIoctl"));
+        assert!(message.contains("Npcap"));
+        assert!(message.contains("--doctor"));
+
+        let permission = packet_monitor_failure(
+            &winptap::Error::PermissionDenied,
+            Some(winptap::Backend::Pktmon),
+        );
+        assert!(permission.contains("administrator"));
+        assert!(!permission.contains("ERROR_INVALID_FUNCTION"));
+    }
 
     #[test]
     fn native_receive_requires_incoming_ethernet_lldp_from_other_mac() {

@@ -28,6 +28,24 @@ Bei `--send` und `--backend auto` wählt die CLI automatisch Npcap. Eine explizi
 - Capture läuft in Arbeitsthreads mit begrenzter Queue; Beendigung und Neuinitialisierung geben Session-Ressourcen frei.
 - Der Empfangsweg ist vom LLDP-Sender bewusst getrennt. Windows Packet Monitor erlaubt **keine Paketinjektion**; Npcap bleibt dafür nötig.
 
+## Fehler 0x00000001 bei DeviceIoControl
+
+Der Windows-Code `0x00000001` steht für `ERROR_INVALID_FUNCTION`, **nicht** für fehlende Administratorrechte (`ERROR_ACCESS_DENIED = 5`). Bei `winptap` kann der Fehler insbesondere im nativen `PktMonDev`-Ausweichbackend (`NativeIoctl`) auftreten, dessen nicht dokumentierte Steuerbefehle nicht auf jedem Windows-Build funktionieren. Ein erfolgreiches `--doctor` kann das reine Auflisten der Komponenten bestätigen, beweist aber nicht, dass der Live-Stream gestartet werden kann.
+
+1. WinLLDP einmal **als Administrator** starten, den physischen Adapter auswählen und den Empfang nochmals prüfen. Wenn weiterhin `0x1` erscheint, liegt das Problem nicht allein an der UAC-Freigabe.
+2. **Automatisch** auswählen, damit bei einem gescheiterten Windows-Stream auf ein installiertes Npcap zurückgefallen werden kann, oder explizit **Npcap** wählen. Packet Monitor und Npcap sind getrennte Empfangswege; der LLDP-Sender bleibt unabhängig davon aus, bis er ausdrücklich aktiviert wird.
+3. Folgende Informationen für eine gerätespezifische Diagnose erfassen (PowerShell im Verzeichnis der CLI, ggf. installierter Name `winlldp-cli.exe`):
+
+   ```powershell
+   winver
+   .\\winlldp-cli.exe --doctor --output pktmon-doctor.json
+   .\\winlldp-cli.exe --backend windows --duration 10 --adapter "Ethernet"
+   ```
+
+   Den Adapternamen `Ethernet` durch den angezeigten Namen ersetzen. Der zweite Befehl prüft die echte Live-Erfassung und zeigt in der Konsole den Fehler und das verwendete Backend. Die Diagnose-JSON enthält Adapterkennungen und sollte vor dem Weitergeben auf sensible Netzwerkdaten geprüft werden.
+
+Wenn die offizielle Windows-Streaming-API auf dem betreffenden System fehlt und `NativeIoctl` mit Fehler `1` abbricht, gibt es ohne weitere Daten keinen sicheren universellen IOCTL-Fix. Die erfolgreiche Nutzung von `pktmon.exe` garantiert **nicht**, dass die Bibliotheks-Streaming-API oder der NativeIoctl-Treiberpfad unterstützt wird. Für eine treiberunabhängige Eingrenzung kann man alternativ mit Microsofts `pktmon.exe` eine ETL-Datei aufzeichnen und in PCAPNG umwandeln; der aktuelle WinLLDP-PCAP-Import unterstützt PCAP und erfordert ggf. eine Konvertierung von PCAPNG nach PCAP.
+
 ## Einschränkungen und Akzeptanz
 - Microsofts Packet-Monitor-API-Funktionen variieren je nach Windows-Build. Ein vorhandenes `pktmon.exe` bedeutet nicht, dass die Streaming-API verfügbar ist. Fehler werden sichtbar gemeldet und **nicht** als erfolgreiche Erfassung ausgegeben.
 - Administratorrechte sind für den nativen Empfang erforderlich, sofern Windows die nötigen Privilegien nicht anderweitig erteilt.
