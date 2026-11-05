@@ -4,3 +4,6 @@ pub mod export;
 pub mod model;
 pub mod protocol;
 pub mod settings;
+
+#[cfg(windows)]
+pub mod platform;

@@ -166,7 +166,10 @@ pub fn standard_access() -> Result<(), String> {
 pub fn launch_npcap_installer(path: &std::path::Path) -> Result<(), String> {
     // The user obtains this installer directly from npcap.com and selects it.
     // Windows UAC and the vendor's interactive setup remain visible.
-    let filename = path.file_name().and_then(|s| s.to_str()).ok_or("Invalid filename")?;
+    let filename = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or("Invalid filename")?;
     let name = filename.to_ascii_lowercase();
     if !name.starts_with("npcap-") || !name.ends_with(".exe") || !path.is_file() {
         return Err("Select an official npcap-*.exe installer downloaded from npcap.com".into());
@@ -190,7 +193,10 @@ pub fn launch_npcap_installer(path: &std::path::Path) -> Result<(), String> {
             1,
         );
         if result as isize <= 32 {
-            Err(format!("Npcap installer launch cancelled/failed (code {})", result as isize))
+            Err(format!(
+                "Npcap installer launch cancelled/failed (code {})",
+                result as isize
+            ))
         } else {
             Ok(())
         }

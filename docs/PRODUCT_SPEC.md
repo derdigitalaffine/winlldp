@@ -25,8 +25,8 @@ Stand: 04.11.2026. Interview abgeschlossen; autonome Fertigstellung beauftragt.
 - MIT-Lizenz für den eigenen Projektcode; Hinweise und Lizenzen eingebundener Fremdkomponenten separat erhalten.
 
 ## Ausführungsentscheidungen
-- Windows 10/11 x64; ARM und 32 Bit sind nicht Bestandteil dieses Releases.
-- Rust mit nativer egui-Oberfläche, ohne Browser-/WebView- oder .NET-Laufzeitabhängigkeit.
+- Windows 10/11 x64 und Linux x64; ARM und 32 Bit sind nicht Bestandteil dieses Releases.
+- Rust mit nativer Slint-Oberfläche für Windows und Linux, ohne Browser-/WebView- oder .NET-Laufzeitabhängigkeit.
 - Deutsch, Englisch und Niederländisch; Standardsprache Deutsch.
 - Automatischer Windows-Darkmode, zusätzlich hell/dunkel wählbar.
 - Ein aktiver Sender läuft im Tray weiter. Nach vollständigem Prozessneustart ist Senden immer aus.

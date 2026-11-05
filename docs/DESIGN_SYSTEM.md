@@ -1,9 +1,7 @@
 # Oberfläche
 
-Native egui-Oberfläche mit Systemthema, heller und dunkler Variante. Dunkle Variante: tiefes Blau, hellgraue Schrift, türkisgrüne Auswahl/Akzente. Helle Variante: kühles Weiß, dunkle Schrift. Informationen immer auch als Text.
+Die Anwendung verwendet Slint auf Windows und Linux. Kompakte Hauptleiste und sechs kurze Navigationsbereiche: Übersicht, Adapter, LLDP senden, Verlauf, Einstellungen und Über WinLLDP. Die Oberfläche passt sich an helle und dunkle Farben an; Sprache ist Deutsch, Englisch oder Niederländisch.
 
-Linke Navigation: Übersicht, Adapter, LLDP senden, Protokoll, Einstellungen, Über. Kopfzeile: kleines Otter-Motiv, Produktname, Captureaktion, Senderstatus. Übersicht: Kennzahlen, Suche/Dateiaktionen, Nachbarliste und Detailbereich. TLVs aufklappbar mit benannten Feldern und auswählbaren Rohdaten. Sender getrennt mit explizitem Einschalten und Validierung.
+Die Übersicht hält Switch/Port sichtbar und zeigt die Nachbarliste neben allen dekodierten und rohen TLV-Daten. Suche, PCAP-Import und CSV/JSON/PCAP-Export sind dort direkt erreichbar. Adapter zeigt Empfangsweg und Adapterauswahl; Einstellungen speichern Sprache, Darstellung und Tray-Verhalten. Der Sender bleibt getrennt und ausgeschaltet, bis er bewusst aktiviert wird.
 
-Mindestfenster 900 × 620, Standard 1280 × 840; vertikale Scrollbereiche. Native Dateidialoge, auswählbare Details, Kopieraktion für Hexdaten. AccessKit-Unterstützung für assistive Technologien. Screenshots werden mit synthetischem PCAP und explizitem QA-Modus erzeugt; keine Beispieldaten im normalen Start.
-
-Appsymbol: transparentes Otter-Motiv als Windows-Icon (16–256 px), UI-Logo und Über-Illustration. Tray 32 px. Generierungsquelle und Konvertierung unter assets/ und scripts/generate_icons.py.
+Otter-RJ45-Motiv: kleines Markenzeichen in der Kopfzeile und volle Illustration im Über-Bereich. Windows verwendet dasselbe Motiv im Tray und als EXE-Symbol.
