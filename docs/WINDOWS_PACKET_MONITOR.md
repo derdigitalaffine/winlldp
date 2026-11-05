@@ -39,7 +39,7 @@ Der Windows-Code `0x00000001` steht für `ERROR_INVALID_FUNCTION`, **nicht** fü
    ```powershell
    winver
    .\\winlldp-cli.exe --doctor --output pktmon-doctor.json
-   .\\winlldp-cli.exe --backend windows --duration 10 --adapter \"Ethernet\"
+   .\\winlldp-cli.exe --backend windows --duration 10 --adapter "Ethernet"
    ```
 
    Den Adapternamen `Ethernet` durch den angezeigten Namen ersetzen. Der zweite Befehl prüft die echte Live-Erfassung und zeigt in der Konsole den Fehler und das verwendete Backend. Die Diagnose-JSON enthält Adapterkennungen und sollte vor dem Weitergeben auf sensible Netzwerkdaten geprüft werden.
