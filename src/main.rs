@@ -817,6 +817,7 @@ fn system_dark() -> bool {
 }
 fn self_test(args: &[String]) -> Result<(), slint::PlatformError> {
     let p = TxProfile {
+        chassis_value: "00:11:22:33:44:55".into(),
         port_value: "self-test".into(),
         ..Default::default()
     };
