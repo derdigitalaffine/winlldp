@@ -349,9 +349,10 @@ fn notice(tx: &SyncSender<Notice>, n: Notice) {
 pub fn inspect_packet_monitor() -> Result<String, String> {
     #[cfg(windows)]
     {
-        let capabilities =
-            winptap::capabilities(winptap::Backend::Auto).map_err(|e| e.to_string())?;
-        let devices = winptap::CaptureDevice::list().map_err(|e| e.to_string())?;
+        let capabilities = winptap::capabilities(winptap::Backend::Auto)
+            .map_err(|e| packet_monitor_failure(&e, None))?;
+        let devices = winptap::CaptureDevice::list()
+            .map_err(|e| packet_monitor_failure(&e, Some(capabilities.backend)))?;
         let names = devices
             .iter()
             .filter(|d| d.network_interface)
@@ -465,8 +466,12 @@ fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> 
     // Never guess a pktmon component from an enumeration index.
     let all = adapters()?;
     let interfaces: Vec<_> = all.iter().map(adapter_identity).collect();
-    let capture_devices = CaptureDevice::list()
-        .map_err(|e| format!("Packet Monitor enumeration: {}", packet_monitor_failure(&e, None)))?;
+    let capture_devices = CaptureDevice::list().map_err(|e| {
+        format!(
+            "Packet Monitor enumeration: {}",
+            packet_monitor_failure(&e, None)
+        )
+    })?;
     let capture_device =
         CaptureDevice::for_interface(adapter_identity(a), &interfaces, &capture_devices)
             .map_err(|e| format!("adapter mapping: {e}"))?;
@@ -516,7 +521,9 @@ fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> 
                     Ok(Some(p)) => p,
                     Ok(None) => return Err("Packet Monitor stream closed".into()),
                     Err(WinError::Timeout) => break,
-                    Err(e) => return Err(packet_monitor_failure(&e, Some(capture_device.backend))),
+                    Err(e) => {
+                        return Err(packet_monitor_failure(&e, Some(capture_device.backend)));
+                    }
                 };
                 let bytes = frame.data();
                 if is_local_source(bytes, a.mac) {
