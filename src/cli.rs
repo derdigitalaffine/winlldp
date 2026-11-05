@@ -69,7 +69,7 @@ fn options(args: &[String]) -> Result<Options, String> {
                     Some("npcap") => CaptureBackend::Npcap,
                     _ => return Err("--backend must be auto, windows or npcap".into()),
                 };
-            },
+            }
             "--adapter" => o
                 .adapters
                 .push(a.next().ok_or("--adapter requires a value")?.clone()),
@@ -142,8 +142,10 @@ fn execute(args: &[String]) -> Result<(), String> {
             "adapters": capture::adapters(),
             "note": "Npcap is a separately installed driver; successful probing does not prove that a remote switch is advertising LLDP."
         });
-        return output(&serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
-            o.output.as_ref());
+        return output(
+            &serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+            o.output.as_ref(),
+        );
     }
     if o.list {
         return output(
@@ -298,8 +300,14 @@ mod tests {
         assert!(options(&a("--cli --unknown")).is_err());
         assert!(options(&a("--backend anything")).is_err());
         assert!(options(&a("--backend windows --send p.json")).is_err());
-        assert_eq!(options(&a("--backend windows")).unwrap().backend, CaptureBackend::Windows);
-        assert_eq!(options(&a("--backend npcap")).unwrap().backend, CaptureBackend::Npcap);
+        assert_eq!(
+            options(&a("--backend windows")).unwrap().backend,
+            CaptureBackend::Windows
+        );
+        assert_eq!(
+            options(&a("--backend npcap")).unwrap().backend,
+            CaptureBackend::Npcap
+        );
         assert_eq!(
             options(&a("--cli --duration 5 --format csv"))
                 .unwrap()

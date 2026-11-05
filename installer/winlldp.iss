@@ -1,5 +1,5 @@
 #define MyAppName "WinLLDP"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.2.0"
 #define MyAppPublisher "Dominik Tröster, Verbandsgemeinde Otterbach-Otterberg"
 
 [Setup]
@@ -21,12 +21,12 @@ UninstallDisplayIcon={app}\WinLLDP.exe
 Compression=lzma2
 SolidCompression=yes
 OutputDir=..\build
-OutputBaseFilename=WinLLDP-1.1.0-Windows-x64-Setup
+OutputBaseFilename=WinLLDP-1.2.0-Windows-x64-Setup
 SetupIconFile=..\assets\winlldp.ico
 LicenseFile=..\LICENSE
 WizardStyle=modern
-VersionInfoVersion=1.1.0.0
-VersionInfoProductVersion=1.1.0.0
+VersionInfoVersion=1.2.0.0
+VersionInfoProductVersion=1.2.0.0
 VersionInfoDescription=WinLLDP Windows x64 installer
 
 [Languages]
@@ -42,6 +42,8 @@ Source: "..\target\x86_64-pc-windows-msvc\release\winlldp.exe"; DestDir: "{app}"
 Source: "..\target\x86_64-pc-windows-msvc\release\winlldp-cli.exe"; DestDir: "{app}"; DestName: "winlldp-cli.exe"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE-GPL-3.0-only.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\Cargo.lock"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

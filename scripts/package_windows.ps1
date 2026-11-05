@@ -5,7 +5,7 @@
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$version = "1.1.0"
+$version = "1.2.0"
 $target = "x86_64-pc-windows-msvc"
 $releaseDir = Join-Path "target" "$target/release"
 $buildDir = "build"
@@ -52,6 +52,8 @@ New-Item -ItemType Directory -Path $buildDir | Out-Null
 Copy-Item -LiteralPath $gui -Destination "$buildDir/WinLLDP-$version-Windows-x64.exe"
 Copy-Item -LiteralPath $cli -Destination "$buildDir/winlldp-cli-$version-Windows-x64.exe"
 Copy-Item -LiteralPath "LICENSE" -Destination "$buildDir/LICENSE.txt"
+Copy-Item -LiteralPath "LICENSE-GPL-3.0-only.txt" -Destination "$buildDir/LICENSE-GPL-3.0-only.txt"
+Copy-Item -LiteralPath "THIRD_PARTY_LICENSES.txt" -Destination "$buildDir/THIRD_PARTY_LICENSES.txt"
 Copy-Item -LiteralPath "THIRD_PARTY_NOTICES.md" -Destination "$buildDir/THIRD_PARTY_NOTICES.md"
 Copy-Item -LiteralPath "Cargo.lock" -Destination "$buildDir/Cargo.lock"
 
@@ -84,11 +86,12 @@ $rustVersion = (& rustc --version).Trim()
     "Release binaries: unsigned; verify SHA256SUMS.txt before use"
     "Receive: Windows Packet Monitor built into Windows (administrator), or optional Npcap capture"
     "Advertise: external Npcap driver required; not bundled"
+    "Linux: native x64 Slint GUI and CLI binaries are published alongside Windows"
     "Hardware/network capture and installation/uninstallation on actual user PCs: not validated in CI"
 ) | Set-Content -LiteralPath "$buildDir/BUILD_INFO.txt" -Encoding utf8
 
-$executables = @(Get-ChildItem -LiteralPath $buildDir -Filter "*.exe" -File | Sort-Object Name)
-if ($executables.Count -ne 3) { throw "Expected GUI, CLI and setup EXEs; found $($executables.Count)" }
+$executables = @(Get-ChildItem -LiteralPath $buildDir -File | Where-Object { $_.Name -match "^WinLLDP(-CLI)?-Linux-x64$|^WinLLDP-1\.2\.0-Windows-x64.*\.exe$|^winlldp-cli-1\.2\.0-Windows-x64\.exe$" } | Sort-Object Name)
+if ($executables.Count -lt 3) { throw "Expected Windows GUI, CLI and setup EXEs" }
 $shaLines = foreach ($file in $executables) {
     $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash  $($file.Name)"

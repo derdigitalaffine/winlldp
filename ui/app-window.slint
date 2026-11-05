@@ -1,0 +1,208 @@
+import { Button, CheckBox, ComboBox, LineEdit, ScrollView, VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "WinLLDP";
+    icon: @image-url("../assets/winlldp-otter-32.png");
+    preferred-width: 1080px;
+    preferred-height: 700px;
+    min-width: 800px;
+    min-height: 560px;
+    background: #101820;
+    in property <int> page: 0;
+    in-out property <string> language: "Deutsch";
+    in-out property <bool> dark: true;
+    in-out property <string> theme: "System";
+    in-out property <bool> capture-running: false;
+    in-out property <bool> sender-running: false;
+    in-out property <bool> close-to-tray: true;
+    in-out property <string> status: "Bereit";
+    in-out property <string> search: "";
+    in property <[string]> neighbors;
+    in-out property <int> selected-neighbor: 0;
+    in property <[string]> details;
+    in property <[string]> adapters;
+    in-out property <[bool]> adapter-checked;
+    in-out property <string> capture-backend: "Auto";
+    in property <bool> is-windows: false;
+    in property <[string]> events;
+    in property <string> count-label: "0 Nachbarn · 0 Pakete";
+    in-out property <string> sender-adapter: "";
+    in property <[string]> sender-adapters;
+    in-out property <string> system-name: "";
+    in-out property <string> port-id: "";
+    in-out property <string> chassis-id: "";
+    in-out property <string> chassis-subtype: "4";
+    in-out property <string> port-subtype: "5";
+    in-out property <string> destination: "01:80:C2:00:00:0E";
+    in property <[string]> optional-tlvs;
+    in-out property <string> optional-kind: "127";
+    in-out property <string> optional-hex: "";
+    in-out property <string> port-description: "";
+    in-out property <string> ttl: "120";
+    in-out property <string> interval: "30";
+    in-out property <string> export-format: "JSON";
+    callback navigate(int);
+    callback start-capture();
+    callback toggle-sender();
+    callback import-pcap();
+    callback export-data(string);
+    callback select-neighbor(int);
+    callback search-changed(string);
+    callback choose-language(string);
+    callback choose-backend(string);
+    callback toggle-adapter(int);
+    callback diagnose-npcap();
+    callback open-npcap();
+    callback choose-theme(string);
+    callback quit-app();
+    callback restart-admin();
+    callback restart-standard();
+    callback update-profile(string, string, string, string, string, string, string, string, string, string);
+    callback add-optional(string, string);
+    callback remove-optional(int);
+    callback choose-sender-adapter(string);
+
+    private property <color> window-bg: dark ? #101820 : #eef2f4;
+    private property <color> panel-bg: dark ? #17232d : #ffffff;
+    private property <color> text-color: dark ? #edf3f5 : #14232d;
+    private property <color> muted: dark ? #9aadb9 : #617480;
+    private property <color> accent: #22b88e;
+
+    VerticalBox {
+        spacing: 0px;
+        HorizontalBox {
+            height: 58px;
+            padding-left: 18px; padding-right: 18px; spacing: 12px;
+            Image { source: @image-url("../assets/winlldp-otter-32.png"); width: 34px; height: 34px; }
+            Text { text: "WinLLDP"; color: text-color; font-size: 20px; font-weight: 700; vertical-alignment: center; }
+            Text { text: "·"; color: muted; vertical-alignment: center; }
+            Text { text: root.count-label; color: muted; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            Text { text: root.sender-running ? (root.language == "English" ? "● ADVERTISING" : root.language == "Nederlands" ? "● VERZENDT" : "● SENDER AKTIV") : (root.language == "English" ? "○ SENDER OFF" : root.language == "Nederlands" ? "○ SENDER UIT" : "○ SENDER AUS"); color: root.sender-running ? accent : muted; vertical-alignment: center; }
+            Button { text: root.capture-running ? (root.language == "English" ? "Stop capture" : root.language == "Nederlands" ? "Ontvangst stoppen" : "Empfang stoppen") : (root.language == "English" ? "Start capture" : root.language == "Nederlands" ? "Ontvangst starten" : "Empfang starten"); clicked => { root.start-capture(); } }
+        }
+        HorizontalBox {
+            spacing: 0px;
+            Rectangle {
+                width: 186px; background: panel-bg;
+                VerticalBox {
+                    padding: 12px; spacing: 3px;
+                    for item[index] in (root.language == "English" ? ["Overview", "Adapters", "Advertise LLDP", "History", "Settings", "About WinLLDP"] : root.language == "Nederlands" ? ["Overzicht", "Adapters", "LLDP verzenden", "Geschiedenis", "Instellingen", "Over WinLLDP"] : ["Übersicht", "Adapter", "LLDP senden", "Verlauf", "Einstellungen", "Über WinLLDP"]):
+                        Rectangle {
+                            height: 38px; border-radius: 6px;
+                            background: root.page == index ? #203b3c : panel-bg;
+                            Text { text: item; color: root.page == index ? accent : text-color; vertical-alignment: center; x: 10px; }
+                            TouchArea { clicked => { root.navigate(index); } }
+                        }
+                    Rectangle { vertical-stretch: 1; }
+                    Text { text: root.status; color: muted; wrap: word-wrap; }
+                    Button { text: root.language == "English" ? "Quit" : root.language == "Nederlands" ? "Afsluiten" : "Beenden"; clicked => { root.quit-app(); } }
+                    Text { text: "v1.2.0 · MIT / GPLv3"; color: muted; font-size: 11px; }
+                }
+            }
+            Rectangle {
+                background: window-bg;
+                if root.page == 0: VerticalBox {
+                    padding: 18px; spacing: 12px;
+                    HorizontalBox {
+                        VerticalBox {
+                            Text { text: root.language == "English" ? "Your connection. Every detail." : root.language == "Nederlands" ? "Je verbinding. Alle details." : "Dein Anschluss. Alle Details."; color: text-color; font-size: 25px; font-weight: 700; }
+                            Text { text: root.language == "English" ? "Discover LLDP neighbors in real time." : root.language == "Nederlands" ? "Ontdek LLDP-buren in realtime." : "LLDP-Nachbarn kompakt in Echtzeit entdecken."; color: muted; }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        Button { text: root.language == "English" ? "Open PCAP" : root.language == "Nederlands" ? "PCAP openen" : "PCAP öffnen"; clicked => { root.import-pcap(); } }
+                        Button { text: "JSON"; clicked => { root.export-data("JSON"); } }
+                        Button { text: "CSV"; clicked => { root.export-data("CSV"); } }
+                        Button { text: "PCAP"; clicked => { root.export-data("PCAP"); } }
+                    }
+                    LineEdit { placeholder-text: root.language == "English" ? "Search switch, port or adapter …" : root.language == "Nederlands" ? "Zoek switch, poort of adapter …" : "Switch, Port oder Adapter suchen …"; text <=> root.search; edited => { root.search-changed(root.search); } }
+                    if root.neighbors.length == 0: Rectangle {
+                        background: panel-bg; border-radius: 10px; vertical-stretch: 1;
+                        VerticalBox {
+                            alignment: center; spacing: 8px;
+                            Text { text: root.language == "English" ? "No LLDP neighbors yet" : root.language == "Nederlands" ? "Nog geen LLDP-buren" : "Noch kein LLDP-Nachbar"; color: text-color; font-size: 19px; horizontal-alignment: center; }
+                            Text { text: root.language == "English" ? "Start capture or open a PCAP recording." : root.language == "Nederlands" ? "Start ontvangst of open een PCAP-opname." : "Starte den Empfang oder öffne eine PCAP-Aufzeichnung."; color: muted; horizontal-alignment: center; }
+                            Button { text: root.language == "English" ? "Open PCAP" : root.language == "Nederlands" ? "PCAP openen" : "PCAP öffnen"; clicked => { root.import-pcap(); } }
+                        }
+                    }
+                    if root.neighbors.length > 0: HorizontalBox {
+                        spacing: 12px; vertical-stretch: 1;
+                        Rectangle {
+                            width: 280px; background: panel-bg; border-radius: 9px;
+                            ScrollView {
+                                for item[index] in root.neighbors: Rectangle {
+                                    height: 60px; border-radius: 5px;
+                                    background: index == root.selected-neighbor ? #203b3c : panel-bg;
+                                    Text { text: item; color: text-color; wrap: word-wrap; x: 9px; y: 6px; vertical-alignment: center; }
+                                    TouchArea { clicked => { root.selected-neighbor = index; root.select-neighbor(index); } }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            background: panel-bg; border-radius: 9px;
+                            ScrollView {
+                                VerticalBox {
+                                    padding: 15px; spacing: 8px;
+                                    for item in root.details: Text { text: item; color: text-color; wrap: word-wrap; }
+                                }
+                            }
+                        }
+                    }
+                    Text { text: root.count-label; color: muted; }
+                }
+                if root.page == 1: VerticalBox {
+                    padding: 20px; spacing: 12px;
+                    Text { text: root.language == "English" ? "Adapters" : root.language == "Nederlands" ? "Adapters" : "Adapter"; color: text-color; font-size: 24px; font-weight: 700; }
+                    Text { text: root.language == "English" ? "Windows receives through native Packet Monitor or optional Npcap. Linux supports PCAP analysis and CLI." : root.language == "Nederlands" ? "Windows ontvangt via Packet Monitor of optioneel Npcap. Linux ondersteunt PCAP-analyse en CLI." : "Windows empfängt nativ über Packet Monitor oder optional Npcap. Linux unterstützt PCAP-Analyse und CLI."; color: muted; wrap: word-wrap; }
+                    if root.is-windows: HorizontalBox { Text { text: root.language == "English" ? "Receive backend" : root.language == "Nederlands" ? "Ontvangstmodus" : "Empfangsweg"; color: text-color; width: 150px; vertical-alignment: center; } ComboBox { model: ["Auto", "Windows Packet Monitor", "Npcap"]; current-value <=> root.capture-backend; selected(value) => { root.choose-backend(value); } } }
+                    if root.is-windows: HorizontalBox { Button { text: root.language == "English" ? "Diagnose Npcap" : root.language == "Nederlands" ? "Npcap diagnosticeren" : "Npcap prüfen"; clicked => { root.diagnose-npcap(); } } Button { text: root.language == "English" ? "Get Npcap" : root.language == "Nederlands" ? "Npcap downloaden" : "Npcap herunterladen"; clicked => { root.open-npcap(); } } }
+                    for item[index] in root.adapters: CheckBox { text: item; checked: root.adapter-checked[index]; toggled => { root.adapter-checked[index] = !root.adapter-checked[index]; root.toggle-adapter(index); } }
+                    Rectangle { vertical-stretch: 1; }
+                    Button { text: root.capture-running ? (root.language == "English" ? "Stop capture" : root.language == "Nederlands" ? "Ontvangst stoppen" : "Empfang stoppen") : (root.language == "English" ? "Start capture" : root.language == "Nederlands" ? "Ontvangst starten" : "Empfang starten"); clicked => { root.start-capture(); } }
+                }
+                if root.page == 2: VerticalBox {
+                    padding: 20px; spacing: 10px;
+                    Text { text: root.language == "English" ? "Advertise LLDP" : root.language == "Nederlands" ? "LLDP verzenden" : "LLDP senden"; color: text-color; font-size: 24px; font-weight: 700; }
+                    Text { text: root.language == "English" ? "Advertising is off by default. Windows Packet Monitor receives; Npcap is required to send." : root.language == "Nederlands" ? "Verzenden staat standaard uit. Windows Packet Monitor ontvangt; Npcap is nodig om te verzenden." : "Der Sender ist standardmäßig aus. Packet Monitor empfängt; Npcap ist zum Senden nötig."; color: muted; }
+                    HorizontalBox { Text { text: root.language == "English" ? "Send adapter" : root.language == "Nederlands" ? "Verzendadapter" : "Sendeadapter"; color: text-color; width: 150px; vertical-alignment: center; } ComboBox { model: root.sender-adapters; current-value <=> root.sender-adapter; selected(value) => { root.choose-sender-adapter(value); } } }
+                    HorizontalBox { Text { text: root.language == "English" ? "System name" : root.language == "Nederlands" ? "Systeemnaam" : "Systemname"; color: text-color; width: 150px; vertical-alignment: center; } LineEdit { text <=> root.system-name; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } }
+                    HorizontalBox { Text { text: root.language == "English" ? "Chassis ID · subtype 1–7" : root.language == "Nederlands" ? "Chassis-ID · type 1–7" : "Chassis ID · Typ 1–7"; color: text-color; width: 150px; vertical-alignment: center; } LineEdit { text <=> root.chassis-id; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } LineEdit { text <=> root.chassis-subtype; width: 64px; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } }
+                    HorizontalBox { Text { text: root.language == "English" ? "Port ID · subtype 1–7" : root.language == "Nederlands" ? "Poort-ID · type 1–7" : "Port ID · Typ 1–7"; color: text-color; width: 150px; vertical-alignment: center; } LineEdit { text <=> root.port-id; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } LineEdit { text <=> root.port-subtype; width: 64px; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } }
+                    HorizontalBox { Text { text: root.language == "English" ? "Port description" : root.language == "Nederlands" ? "Poortbeschrijving" : "Portbeschreibung"; color: text-color; width: 150px; vertical-alignment: center; } LineEdit { text <=> root.port-description; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } }
+                    HorizontalBox { Text { text: "TTL / s"; color: text-color; width: 150px; vertical-alignment: center; } LineEdit { text <=> root.ttl; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } Text { text: root.language == "English" ? "Interval / s" : root.language == "Nederlands" ? "Interval / s" : "Intervall / s"; color: text-color; width: 110px; vertical-alignment: center; } LineEdit { text <=> root.interval; width: 80px; edited => { root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } }
+                    HorizontalBox { Text { text: root.language == "English" ? "Destination MAC" : root.language == "Nederlands" ? "Doel-MAC" : "Ziel-MAC"; color: text-color; width: 150px; vertical-alignment: center; } ComboBox { model: ["01:80:C2:00:00:0E", "01:80:C2:00:00:03", "01:80:C2:00:00:00"]; current-value <=> root.destination; selected(value) => { root.destination = value; root.update-profile(root.system-name, root.chassis-id, root.chassis-subtype, root.port-id, root.port-subtype, root.port-description, root.ttl, root.interval, root.destination, ""); } } }
+                    Text { text: root.language == "English" ? "Additional TLVs · type 7–127 · raw hex" : root.language == "Nederlands" ? "Extra TLV’s · type 7–127 · ruwe hex" : "Zusätzliche TLVs · Typ 7–127 · Hex-Rohdaten"; color: muted; }
+                    HorizontalBox { LineEdit { text <=> root.optional-kind; width: 64px; } LineEdit { text <=> root.optional-hex; placeholder-text: "00 80 C2 01 00 2A"; } Button { text: root.language == "English" ? "Add TLV" : root.language == "Nederlands" ? "TLV toevoegen" : "TLV hinzufügen"; clicked => { root.add-optional(root.optional-kind, root.optional-hex); } } }
+                    for item[index] in root.optional-tlvs: HorizontalBox { Text { text: item; color: text-color; horizontal-stretch: 1; } Button { text: "×"; clicked => { root.remove-optional(index); } } }
+                    Rectangle { vertical-stretch: 1; }
+                    Button { text: root.sender-running ? (root.language == "English" ? "Turn advertising off" : root.language == "Nederlands" ? "Verzenden uitschakelen" : "LLDP-Sender ausschalten") : (root.language == "English" ? "Turn advertising on" : root.language == "Nederlands" ? "Verzenden inschakelen" : "LLDP-Sender einschalten"); clicked => { root.toggle-sender(); } }
+                }
+                if root.page == 3: VerticalBox {
+                    padding: 20px; spacing: 10px;
+                    Text { text: root.language == "English" ? "History" : root.language == "Nederlands" ? "Geschiedenis" : "Verlauf"; color: text-color; font-size: 24px; font-weight: 700; }
+                    ScrollView { for item in root.events: Text { text: item; color: text-color; wrap: word-wrap; } }
+                }
+                if root.page == 4: VerticalBox {
+                    padding: 20px; spacing: 12px;
+                    Text { text: root.language == "English" ? "Settings" : root.language == "Nederlands" ? "Instellingen" : "Einstellungen"; color: text-color; font-size: 24px; font-weight: 700; }
+                    HorizontalBox { Text { text: root.language == "English" ? "Language" : root.language == "Nederlands" ? "Taal" : "Sprache"; color: text-color; width: 130px; vertical-alignment: center; } ComboBox { model: ["Deutsch", "English", "Nederlands"]; current-value <=> root.language; selected(value) => { root.choose-language(value); } } }
+                    HorizontalBox { Text { text: root.language == "English" ? "Theme" : root.language == "Nederlands" ? "Thema" : "Darstellung"; color: text-color; width: 130px; vertical-alignment: center; } ComboBox { model: ["System", "Light", "Dark"]; current-value <=> root.theme; selected(value) => { root.choose-theme(value); } } }
+                    if root.is-windows: CheckBox { text: root.language == "English" ? "Close to system tray" : root.language == "Nederlands" ? "Naar systeemvak minimaliseren" : "Beim Schließen ins Tray minimieren"; checked <=> root.close-to-tray; }
+                    if root.is-windows: HorizontalBox { Button { text: root.language == "English" ? "Restart as administrator" : root.language == "Nederlands" ? "Opnieuw starten als beheerder" : "Als Administrator neu starten"; clicked => { root.restart-admin(); } } Button { text: root.language == "English" ? "Restart without elevation" : root.language == "Nederlands" ? "Opnieuw starten zonder beheerder" : "Ohne erhöhte Rechte neu starten"; clicked => { root.restart-standard(); } } }
+                    Text { text: root.language == "English" ? "Settings and history stay on this device." : root.language == "Nederlands" ? "Instellingen en geschiedenis blijven op dit apparaat." : "Einstellungen und Verlauf werden lokal gespeichert."; color: muted; }
+                }
+                if root.page == 5: VerticalBox {
+                    padding: 20px; spacing: 10px;
+                    HorizontalBox {
+                        Image { source: @image-url("../assets/winlldp-otter.png"); width: 120px; height: 120px; }
+                        VerticalBox { alignment: center; Text { text: "WinLLDP"; color: text-color; font-size: 26px; font-weight: 700; } Text { text: root.language == "English" ? "An open ear for your network." : root.language == "Nederlands" ? "Een luisterend oor voor je netwerk." : "Ein offenes Ohr für dein Netzwerk."; color: muted; } }
+                    }
+                    Text { text: "Entwickelt von Dominik Tröster"; color: text-color; }
+                    Text { text: "Verbandsgemeinde Otterbach-Otterberg"; color: text-color; }
+                    Text { text: root.language == "English" ? "WinLLDP MIT / GPL-3.0-only · Slint GPL-3.0-only · Windows and Linux" : root.language == "Nederlands" ? "WinLLDP MIT / GPL-3.0-only · Slint GPL-3.0-only · Windows en Linux" : "WinLLDP MIT / GPL-3.0-only · Slint GPL-3.0-only · Windows und Linux"; color: muted; }
+                    Text { text: root.language == "English" ? "All received LLDP TLVs and their raw data are available. Export PCAP, JSON or CSV." : root.language == "Nederlands" ? "Alle ontvangen LLDP-TLV’s en ruwe gegevens blijven zichtbaar. Exporteer PCAP, JSON of CSV." : "Alle empfangenen LLDP-TLVs bleiben mit Rohdaten sichtbar. PCAP, JSON und CSV können exportiert werden."; color: text-color; wrap: word-wrap; }
+                }
+            }
+        }
+    }
+}

@@ -1,6 +1,6 @@
 # Architektur und technische Grenzen
 
-WinLLDP 1.0 verwendet Rust 2021 und egui/eframe 0.33.3 für eine native Windows-x64-Anwendung. Ein EXE enthält UI, Parser, Sender und Ressourcen. Keine eigene Hintergrunddienstinstallation.
+WinLLDP 1.0 verwendet Rust 2021 und Slint 1.17 für eine native Windows- und Linux-x64-Anwendung. Ein EXE enthält UI, Parser, Sender und Ressourcen. Keine eigene Hintergrunddienstinstallation.
 
 ## Module
 
@@ -24,3 +24,6 @@ Quellen: https://npcap.com/guide/npcap-users-guide.html und https://npcap.com/gu
 Alle TLV-Typen 0–127 werden verlustfrei mit Typ, Rohbytes und vorhandenen Interpretationen angezeigt. Pflicht-TLVs und Reihenfolge werden validiert. Standardfelder, Managementadressen, Fähigkeiten sowie verbreitete IEEE 802.1/802.3- und MED-TLVs erhalten zusätzliche benannte Felder. Unbekannte OUI/Subtypen bleiben vollständig einsehbar. Nicht jedes herstellerspezifische Binärformat kann semantisch interpretiert werden.
 
 Der Sender bietet bearbeitbare Pflichtfelder, Textfelder und zusätzliche TLVs 7–127 als Hexdaten. Damit sind auch MED-, neue IEEE- und proprietäre Erweiterungen konfigurierbar. Ein Hexeditor ersetzt keine fachliche Prüfung eines proprietären Formats. MTU, Typ- und Längengrenzen werden geprüft. CDP ist kein Bestandteil von LLDP und wird nicht beworben.
+
+
+Die Slint-Oberfläche ist in `ui/app-window.slint` definiert und verwendet die bestehenden Parser-, Monitor-, Settings- und Exporttypen. Linux startet Offline-PCAP und CLI; Windows aktiviert Packet Monitor/Npcap gemäß gewähltem Empfangsweg.

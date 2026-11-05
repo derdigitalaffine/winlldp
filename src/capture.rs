@@ -97,7 +97,11 @@ impl Engine {
     pub fn start(&mut self, devices: &[Adapter]) -> Result<(), String> {
         self.start_with(devices, CaptureBackend::Auto)
     }
-    pub fn start_with(&mut self, devices: &[Adapter], backend: CaptureBackend) -> Result<(), String> {
+    pub fn start_with(
+        &mut self,
+        devices: &[Adapter],
+        backend: CaptureBackend,
+    ) -> Result<(), String> {
         self.stop();
         if devices.is_empty() {
             return Err("No adapter selected".into());
@@ -178,8 +182,11 @@ pub fn inspect_npcap() -> Result<NpcapReport, String> {
     let devices = unsafe { api.devices()? };
     let version = unsafe {
         let p = (api.version)();
-        if p.is_null() { "Npcap (unknown version)".into() }
-        else { CStr::from_ptr(p).to_string_lossy().into_owned() }
+        if p.is_null() {
+            "Npcap (unknown version)".into()
+        } else {
+            CStr::from_ptr(p).to_string_lossy().into_owned()
+        }
     };
     #[cfg(windows)]
     let admin_only = {
@@ -192,7 +199,11 @@ pub fn inspect_npcap() -> Result<NpcapReport, String> {
     };
     #[cfg(not(windows))]
     let admin_only = None;
-    Ok(NpcapReport { version, devices, admin_only })
+    Ok(NpcapReport {
+        version,
+        devices,
+        admin_only,
+    })
 }
 
 pub fn is_local_source(frame: &[u8], mac: [u8; 6]) -> bool {
@@ -289,9 +300,10 @@ impl Api {
                 version: symbol!("pcap_lib_version"),
                 findalldevs: symbol!("pcap_findalldevs"),
                 freealldevs: symbol!("pcap_freealldevs"),
-                direction: l.get(b"pcap_setdirection\0").ok().map(
-                    |f: libloading::Symbol<unsafe extern "C" fn(Handle, c_int) -> c_int>| *f
-                ),
+                direction: l
+                    .get(b"pcap_setdirection\0")
+                    .ok()
+                    .map(|f: libloading::Symbol<unsafe extern "C" fn(Handle, c_int) -> c_int>| *f),
                 _library: l,
             })
         }
@@ -300,8 +312,10 @@ impl Api {
         let mut head: *mut PcapIf = std::ptr::null_mut();
         let mut err = [0i8; 256];
         if (self.findalldevs)(&mut head, err.as_mut_ptr()) != 0 {
-            return Err(format!("Npcap adapter enumeration: {}",
-                CStr::from_ptr(err.as_ptr()).to_string_lossy()));
+            return Err(format!(
+                "Npcap adapter enumeration: {}",
+                CStr::from_ptr(err.as_ptr()).to_string_lossy()
+            ));
         }
         let mut result = Vec::new();
         let mut current = head;
@@ -335,13 +349,20 @@ fn notice(tx: &SyncSender<Notice>, n: Notice) {
 pub fn inspect_packet_monitor() -> Result<String, String> {
     #[cfg(windows)]
     {
-        let capabilities = winptap::capabilities(winptap::Backend::Auto)
-            .map_err(|e| e.to_string())?;
+        let capabilities =
+            winptap::capabilities(winptap::Backend::Auto).map_err(|e| e.to_string())?;
         let devices = winptap::CaptureDevice::list().map_err(|e| e.to_string())?;
-        let names = devices.iter().filter(|d| d.network_interface)
-            .map(|d| format!("{}: {}", d.id, d.description)).collect::<Vec<_>>();
-        Ok(format!("{:?}; {} NIC components: {}", capabilities.backend,
-            names.len(), names.join(" | ")))
+        let names = devices
+            .iter()
+            .filter(|d| d.network_interface)
+            .map(|d| format!("{}: {}", d.id, d.description))
+            .collect::<Vec<_>>();
+        Ok(format!(
+            "{:?}; {} NIC components: {}",
+            capabilities.backend,
+            names.len(),
+            names.join(" | ")
+        ))
     }
     #[cfg(not(windows))]
     {
@@ -365,11 +386,19 @@ fn run_auto(a: Adapter, backend: CaptureBackend, rx: Receiver<Command>, tx: Sync
         native_error = "Windows Packet Monitor is not available on this OS".into();
     }
     if backend == CaptureBackend::Windows {
-        notice(&tx, Notice::Error(a.id, format!("Windows Packet Monitor: {native_error}")));
+        notice(
+            &tx,
+            Notice::Error(a.id, format!("Windows Packet Monitor: {native_error}")),
+        );
         return;
     }
-    notice(&tx, Notice::Diagnostic(a.id.clone(),
-        format!("Windows Packet Monitor unavailable ({native_error}); trying Npcap")));
+    notice(
+        &tx,
+        Notice::Diagnostic(
+            a.id.clone(),
+            format!("Windows Packet Monitor unavailable ({native_error}); trying Npcap"),
+        ),
+    );
     match Api::load() {
         Ok(api) => {
             notice(&tx, Notice::Backend(a.id.clone(), "Npcap fallback".into()));
@@ -406,48 +435,55 @@ fn is_remote_lldp_frame(
 }
 
 #[cfg(windows)]
-fn run_windows(
-    a: &Adapter,
-    rx: &Receiver<Command>,
-    tx: &SyncSender<Notice>,
-) -> Result<(), String> {
+fn run_windows(a: &Adapter, rx: &Receiver<Command>, tx: &SyncSender<Notice>) -> Result<(), String> {
     use winptap::{
-        CaptureConfig, CaptureDevice, Error as WinError, Filter,
-        LinkType, PacketReceiver,
+        CaptureConfig, CaptureDevice, Error as WinError, Filter, LinkType, PacketReceiver,
     };
     // OS interface IDs are NPF-prefixed GUIDs for historical Npcap use.
     // Never guess a pktmon component from an enumeration index.
     let all = adapters()?;
     let interfaces: Vec<_> = all.iter().map(adapter_identity).collect();
     let capture_devices = CaptureDevice::list().map_err(|e| e.to_string())?;
-    let capture_device = CaptureDevice::for_interface(
-        adapter_identity(a), &interfaces, &capture_devices,
-    ).map_err(|e| format!("adapter mapping: {e}"))?;
+    let capture_device =
+        CaptureDevice::for_interface(adapter_identity(a), &interfaces, &capture_devices)
+            .map_err(|e| format!("adapter mapping: {e}"))?;
 
     // Driver and application filters both restrict capture to LLDP EtherType.
     // The library understands one or more 802.1Q VLAN tags.
-    let lldp = Filter { ether_type: Some(0x88cc), ..Default::default() };
+    let lldp = Filter {
+        ether_type: Some(0x88cc),
+        ..Default::default()
+    };
     let config = CaptureConfig::builder()
         .device(capture_device.clone())
         .link_type(LinkType::Ethernet)
         .snaplen(2048)
         .queue_capacity(256)
         .capture_filter(lldp)
-        .build().map_err(|e| e.to_string())?;
+        .build()
+        .map_err(|e| e.to_string())?;
     let mut receiver = PacketReceiver::open(config).map_err(|e| e.to_string())?;
-    notice(tx, Notice::Backend(a.id.clone(), format!(
-        "Windows Packet Monitor ({:?})", capture_device.backend,
-    )));
+    notice(
+        tx,
+        Notice::Backend(
+            a.id.clone(),
+            format!("Windows Packet Monitor ({:?})", capture_device.backend,),
+        ),
+    );
     notice(tx, Notice::Status(a.id.clone(), "capture_started".into()));
     let result = (|| -> Result<(), String> {
         'receive: loop {
             for command in rx.try_iter() {
                 match command {
                     Command::Stop => break 'receive,
-                    Command::Advertise(Some(_)) => notice(tx, Notice::Error(
-                        a.id.clone(),
-                        "Windows Packet Monitor cannot inject LLDP. Select Npcap to advertise.".into(),
-                    )),
+                    Command::Advertise(Some(_)) => notice(
+                        tx,
+                        Notice::Error(
+                            a.id.clone(),
+                            "Windows Packet Monitor cannot inject LLDP. Select Npcap to advertise."
+                                .into(),
+                        ),
+                    ),
                     Command::Advertise(None) => notice(tx, Notice::Tx(a.id.clone(), false)),
                 }
             }
@@ -464,15 +500,21 @@ fn run_windows(
                     continue;
                 }
                 if !is_remote_lldp_frame(
-                    bytes, a.mac, frame.metadata().link_type, frame.metadata().direction
+                    bytes,
+                    a.mac,
+                    frame.metadata().link_type,
+                    frame.metadata().direction,
                 ) {
                     continue;
                 }
-                notice(tx, Notice::Frame(Packet {
-                    at: Utc::now(),
-                    adapter: a.id.clone(),
-                    bytes: bytes.to_vec(),
-                }));
+                notice(
+                    tx,
+                    Notice::Frame(Packet {
+                        at: Utc::now(),
+                        adapter: a.id.clone(),
+                        bytes: bytes.to_vec(),
+                    }),
+                );
             }
             thread::sleep(Duration::from_millis(20));
         }
@@ -668,10 +710,35 @@ mod native_packet_tests {
             ..Default::default()
         };
         let frame = protocol::encode(&profile, switch_mac, false).unwrap();
-        assert!(is_remote_lldp_frame(&frame, self_mac, LinkType::Ethernet, Direction::Receive));
-        assert!(!is_remote_lldp_frame(&frame, switch_mac, LinkType::Ethernet, Direction::Receive));
-        assert!(!is_remote_lldp_frame(&frame, self_mac, LinkType::Ethernet, Direction::Transmit));
-        assert!(!is_remote_lldp_frame(&frame, self_mac, LinkType::RawIp, Direction::Receive));
-        assert!(!is_remote_lldp_frame(&frame[..12], self_mac, LinkType::Ethernet, Direction::Receive));
+        assert!(is_remote_lldp_frame(
+            &frame,
+            self_mac,
+            LinkType::Ethernet,
+            Direction::Receive
+        ));
+        assert!(!is_remote_lldp_frame(
+            &frame,
+            switch_mac,
+            LinkType::Ethernet,
+            Direction::Receive
+        ));
+        assert!(!is_remote_lldp_frame(
+            &frame,
+            self_mac,
+            LinkType::Ethernet,
+            Direction::Transmit
+        ));
+        assert!(!is_remote_lldp_frame(
+            &frame,
+            self_mac,
+            LinkType::RawIp,
+            Direction::Receive
+        ));
+        assert!(!is_remote_lldp_frame(
+            &frame[..12],
+            self_mac,
+            LinkType::Ethernet,
+            Direction::Receive
+        ));
     }
 }
