@@ -34,7 +34,7 @@ jobs:
         run: sh scripts/build-linux.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: WinLLDP-1.2.0-Linux-x64
+          name: WinLLDP-1.2.1-Linux-x64
           path: build/linux-x64/
           if-no-files-found: error
 
@@ -59,6 +59,10 @@ jobs:
       - name: Cache Rust dependencies and build
         uses: Swatinem/rust-cache@v2
 
+      - name: Synchronize package version in Cargo.lock
+        shell: pwsh
+        run: python scripts/sync_lock_version.py
+
       - name: Run Rust tests on Windows
         shell: pwsh
         run: cargo test --locked --target x86_64-pc-windows-msvc
@@ -80,42 +84,66 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Unable to install Inno Setup 6" }
           }
 
+      - name: Download Linux binaries and regenerated license bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: WinLLDP-1.2.1-Linux-x64
+          path: release-input/linux
+
+      - name: Import complete third-party licenses before Windows packaging
+        shell: pwsh
+        run: |
+          $licensePath = 'release-input/linux/THIRD_PARTY_LICENSES.txt'
+          if (-not (Test-Path -LiteralPath $licensePath)) {
+            throw 'Linux-generated third-party license file is missing.'
+          }
+          $licenseBytes = (Get-Item -LiteralPath $licensePath).Length
+          if ($licenseBytes -lt 1000000) {
+            throw "Third-party license bundle is unexpectedly short: $licenseBytes bytes."
+          }
+          Copy-Item -LiteralPath $licensePath -Destination 'THIRD_PARTY_LICENSES.txt' -Force
+          Write-Host "Using $licenseBytes bytes of regenerated dependency licenses for the Windows installer."
+
       - name: Package and smoke-test Windows EXEs and installer
         shell: pwsh
         run: ./scripts/package_windows.ps1
 
-      - name: Add Linux binaries to the release bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: WinLLDP-1.2.0-Linux-x64
-          path: build/linux
       - name: Flatten Linux binaries into build directory
         shell: pwsh
         run: |
-          Move-Item build/linux/WinLLDP-Linux-x64 build/WinLLDP-Linux-x64
-          Move-Item build/linux/WinLLDP-CLI-Linux-x64 build/WinLLDP-CLI-Linux-x64
-          Move-Item build/linux/BUILD_INFO-Linux.txt build/BUILD_INFO-Linux.txt
-          Move-Item build/linux/SHA256SUMS-Linux.txt build/SHA256SUMS-Linux.txt
-          Remove-Item build/linux -Recurse
-          $releaseFiles = Get-ChildItem build -File | Where-Object { $_.Name -match "^WinLLDP-1\.2\.0-Windows-x64.*\.exe$|^winlldp-cli-1\.2\.0-Windows-x64\.exe$|^WinLLDP(-CLI)?-Linux-x64$" } | Sort-Object Name
+          Move-Item release-input/linux/WinLLDP-Linux-x64 build/WinLLDP-Linux-x64
+          Move-Item release-input/linux/WinLLDP-CLI-Linux-x64 build/WinLLDP-CLI-Linux-x64
+          Move-Item release-input/linux/BUILD_INFO-Linux.txt build/BUILD_INFO-Linux.txt
+          Move-Item release-input/linux/SHA256SUMS-Linux.txt build/SHA256SUMS-Linux.txt
+          $packagedLicense = (Get-Item -LiteralPath build/THIRD_PARTY_LICENSES.txt).Length
+          if ($packagedLicense -lt 1000000) {
+            throw "Packaged third-party licenses are unexpectedly short: $packagedLicense bytes."
+          }
+          $originalHash = (Get-FileHash -LiteralPath THIRD_PARTY_LICENSES.txt -Algorithm SHA256).Hash
+          $packagedHash = (Get-FileHash -LiteralPath build/THIRD_PARTY_LICENSES.txt -Algorithm SHA256).Hash
+          if ($originalHash -ne $packagedHash) {
+            throw 'Packaged third-party licenses differ from the regenerated source file.'
+          }
+          Remove-Item release-input -Recurse -Force
+          $releaseFiles = Get-ChildItem build -File | Where-Object { $_.Name -match "^WinLLDP-1\.2\.1-Windows-x64.*\.exe$|^winlldp-cli-1\.2\.1-Windows-x64\.exe$|^WinLLDP(-CLI)?-Linux-x64$" } | Sort-Object Name
           $hashLines = foreach ($file in $releaseFiles) { $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); "$hash  $($file.Name)" }
           $hashLines | Set-Content build/SHA256SUMS.txt -Encoding utf8
 
       - name: Upload Windows and Linux build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: WinLLDP-1.2.0-Windows-x64
+          name: WinLLDP-1.2.1-Windows-x64
           path: build/
           if-no-files-found: error
 
-      - name: Commit binaries and create release v1.2.0
+      - name: Commit binaries and create release v1.2.1
         if: github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = 'v1.2.0'
+          $tag = 'v1.2.1'
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
           if ($LASTEXITCODE -eq 0) {
             Write-Host "Release $tag already exists; not overwriting it."
@@ -129,25 +157,25 @@ jobs:
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -f build/
+          git add -f build/ THIRD_PARTY_LICENSES.txt Cargo.lock
           git diff --cached --quiet
           if ($LASTEXITCODE -eq 0) {
             throw 'Windows build artifacts were not staged. Release will not be created.'
           }
-          git commit -m 'build: add verified Windows v1.2.0 binaries and installer [skip ci]'
+          git commit -m 'build: add verified Windows v1.2.1 binaries and installer [skip ci]'
           if ($LASTEXITCODE -ne 0) { throw 'Commit of build artifacts failed' }
           git push origin HEAD:main
           if ($LASTEXITCODE -ne 0) { throw 'Push of build artifacts failed' }
 
-          git tag -a $tag -m 'WinLLDP v1.2.0 Windows x64'
+          git tag -a $tag -m 'WinLLDP v1.2.1 Windows x64'
           if ($LASTEXITCODE -ne 0) { throw 'Creating release tag failed' }
           git push origin $tag
           if ($LASTEXITCODE -ne 0) { throw 'Pushing release tag failed' }
 
           $assets = @(
-            'build/WinLLDP-1.2.0-Windows-x64.exe',
-            'build/winlldp-cli-1.2.0-Windows-x64.exe',
-            'build/WinLLDP-1.2.0-Windows-x64-Setup.exe',
+            'build/WinLLDP-1.2.1-Windows-x64.exe',
+            'build/winlldp-cli-1.2.1-Windows-x64.exe',
+            'build/WinLLDP-1.2.1-Windows-x64-Setup.exe',
             'build/WinLLDP-Linux-x64',
             'build/WinLLDP-CLI-Linux-x64',
             'build/SHA256SUMS.txt',
@@ -160,5 +188,5 @@ jobs:
             'build/THIRD_PARTY_NOTICES.md',
             'build/Cargo.lock'
           )
-          & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --title 'WinLLDP v1.2.0' --notes-file docs/RELEASE_NOTES_v1.2.0.md --verify-tag
+          & gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --title 'WinLLDP v1.2.1' --notes-file docs/RELEASE_NOTES_v1.2.1.md --verify-tag
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release creation failed' }

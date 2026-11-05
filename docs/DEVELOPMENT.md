@@ -27,4 +27,4 @@ Das Setup ist eine Inno-Setup-Datei pro Benutzer. Packet Monitor ist unter Windo
 `python scripts/collect_licenses.py` aktualisiert Abhängigkeitstexte. WinLLDP-Quellcode ist unter MIT und GPL-3.0-only verfügbar. Das Slint-Binary verwendet GPL-3.0-only. Beide vollständigen Lizenztexte und Notices werden mit ausgeliefert.
 
 ## CI und Abnahme
-`.github/workflows/windows-release.yml` baut Windows plus Linux auf jedem PR und erzeugt nach erfolgreichem Merge v1.2.0 Build-Artefakte, Prüfsummen und Release. CI ersetzt keine echte Abnahme unter Windows 10/11, mit Packet Monitor, Npcap und Switch-Hardware; diese Grenzen bleiben in den Release Notes dokumentiert.
+`.github/workflows/windows-release.yml` baut Windows plus Linux auf jedem PR und erzeugt nach erfolgreichem Merge Build-Artefakte, Prüfsummen und Release. Die vollständigen Drittanbieter-Lizenzen werden im Linux-Build aus `Cargo.lock` gesammelt und in die Windows-/Linux-Pakete kopiert. CI ersetzt keine echte Abnahme unter Windows 10/11, mit Packet Monitor, Npcap und Switch-Hardware; diese Grenzen bleiben in den Release Notes dokumentiert.
